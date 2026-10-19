@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: coachpilot
+      POSTGRES_PASSWORD: coachpilot
+      POSTGRES_DB: coachpilot
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coachpilot"]
+      interval: 3s
+      retries: 20
+  api:
+    build: ./backend
+    image: coachpilot-api
+    environment:
+      CP_DATABASE_URL: postgresql+asyncpg://coachpilot:coachpilot@db:5432/coachpilot
+      CP_JWT_SECRET: ${CP_JWT_SECRET:-dev-secret-change-me-dev-secret-change-me}
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+volumes:
+  pgdata:

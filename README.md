@@ -1,0 +1,39 @@
+# CoachPilot AI
+
+Мобильный AI-помощник футбольного тренера: подготовка тренировки → проведение с телефона → отчёт → следующая тренировка. Рынок — Россия и СНГ.
+
+| Каталог | Что внутри |
+|---|---|
+| `app/` | Flutter-приложение (iOS/Android), local-first: SQLite (Drift) + фоновая синхронизация |
+| `backend/` | API на FastAPI + PostgreSQL: авторизация, синхронизация, AI-генерация, каталог упражнений |
+| `docs/` | Архитектура, решения, план этапов |
+
+## Быстрый старт backend
+
+```bash
+cd backend
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+cp .env.example .env            # при необходимости поправьте CP_DATABASE_URL
+.venv/bin/alembic upgrade head
+.venv/bin/uvicorn app.main:app --reload
+# документация API: http://localhost:8000/docs
+```
+
+Или целиком в Docker: `docker compose up --build` (API на :8000, Postgres на :5432).
+
+Тесты: создайте БД `coachpilot_test` и запустите `.venv/bin/pytest`
+(адрес БД задаётся переменной `CP_DATABASE_URL`).
+
+## Статус этапов
+
+- [x] 0. Каркас: репозиторий, Docker, CI
+- [x] 1. Backend-ядро: авторизация, модель данных, синхронизация, изоляция данных, экспорт/удаление аккаунта
+- [ ] 2. Приложение: основа + офлайн
+- [ ] 3. Команда, игроки, посещаемость
+- [ ] 4. Библиотека упражнений и схемы
+- [ ] 5. Планы тренировок и AI
+- [ ] 6. Режим занятия
+- [ ] 7. Отчёт и история
+- [ ] 8. Полировка, релиз-кандидат
+
+Подробности — в [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

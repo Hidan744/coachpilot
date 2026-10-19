@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: coachpilot
+          POSTGRES_PASSWORD: coachpilot
+          POSTGRES_DB: coachpilot_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U coachpilot" --health-interval 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      CP_DATABASE_URL: postgresql+asyncpg://coachpilot:coachpilot@localhost:5432/coachpilot_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: alembic upgrade head && alembic check && alembic downgrade base
+      - run: pytest -q
+
+  app:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('app/pubspec.yaml') != '' }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter analyze
+      - run: flutter test

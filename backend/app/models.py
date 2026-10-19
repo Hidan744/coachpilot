@@ -1,0 +1,275 @@
+"""ORM-модели.
+
+Синхронизируемые сущности наследуют SyncMixin: клиент сам генерирует UUID,
+а сервер при каждой записи присваивает `server_seq` из глобальной последовательности.
+По `server_seq` клиент инкрементально забирает изменения (`/sync/pull`).
+Удаление мягкое (`deleted_at`), чтобы удаление дошло до других устройств.
+"""
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Sequence,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, declared_attr, mapped_column
+
+from app.db import Base
+
+sync_seq = Sequence("sync_seq", metadata=Base.metadata)
+
+
+def _uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+
+def _now_col(**kw) -> Mapped[datetime]:
+    return mapped_column(DateTime(timezone=True), server_default=func.now(), **kw)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(String(254), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(20), default="coach")
+    # Профиль тренера
+    city: Mapped[str | None] = mapped_column(String(100))
+    coaching_level: Mapped[str | None] = mapped_column(String(50))
+    consent_version: Mapped[str] = mapped_column(String(20))
+    consent_at: Mapped[datetime] = _now_col()
+    created_at: Mapped[datetime] = _now_col()
+    updated_at: Mapped[datetime] = _now_col(onupdate=func.now())
+
+
+class Club(Base):
+    """Задел под клубную версию; в MVP не используется в интерфейсе."""
+
+    __tablename__ = "clubs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(150))
+    created_at: Mapped[datetime] = _now_col()
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _now_col()
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    plan: Mapped[str] = mapped_column(String(20), default="free")
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    ai_quota_month: Mapped[int] = mapped_column(Integer, default=10)
+    ai_used: Mapped[int] = mapped_column(Integer, default=0)
+    period_start: Mapped[datetime] = _now_col()
+
+
+class AIRequest(Base):
+    """Журнал AI-операций. Персональные данные игроков сюда не пишем."""
+
+    __tablename__ = "ai_requests"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30))
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(60))
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    valid: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now_col()
+
+
+# ---------------------------------------------------------------- синхронизируемые
+
+
+class SyncMixin:
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+
+    @declared_attr
+    def owner_id(cls) -> Mapped[uuid.UUID]:
+        return mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    @declared_attr
+    def club_id(cls) -> Mapped[uuid.UUID | None]:
+        return mapped_column(ForeignKey("clubs.id", ondelete="SET NULL"), nullable=True)
+
+    server_seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @declared_attr.directive
+    def __table_args__(cls):
+        return (Index(f"ix_{cls.__tablename__}_owner_seq", "owner_id", "server_seq"),)
+
+
+class Team(SyncMixin, Base):
+    __tablename__ = "teams"
+
+    name: Mapped[str] = mapped_column(String(100))
+    age_group: Mapped[str] = mapped_column(String(20))
+    level: Mapped[str] = mapped_column(String(30))
+    default_players: Mapped[int] = mapped_column(Integer)
+    field_type: Mapped[str | None] = mapped_column(String(30))
+    equipment: Mapped[list] = mapped_column(JSONB, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class Player(SyncMixin, Base):
+    __tablename__ = "players"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"))
+    first_name: Mapped[str] = mapped_column(String(60))
+    last_name: Mapped[str] = mapped_column(String(60), default="")
+    birth_year: Mapped[int | None] = mapped_column(Integer)
+    position: Mapped[str | None] = mapped_column(String(30))
+    number: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Drill(SyncMixin, Base):
+    """Упражнение. owner_id = NULL — системная библиотека (раздаётся через /catalog)."""
+
+    __tablename__ = "drills"
+
+    @declared_attr
+    def owner_id(cls) -> Mapped[uuid.UUID | None]:
+        return mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+
+    source: Mapped[str] = mapped_column(String(10))  # system | user | ai
+    title: Mapped[str] = mapped_column(String(150))
+    category: Mapped[str] = mapped_column(String(30))
+    goal: Mapped[str] = mapped_column(Text, default="")
+    age_min: Mapped[int] = mapped_column(Integer, default=6)
+    age_max: Mapped[int] = mapped_column(Integer, default=99)
+    players_min: Mapped[int] = mapped_column(Integer, default=1)
+    players_max: Mapped[int] = mapped_column(Integer, default=30)
+    duration_min: Mapped[int] = mapped_column(Integer, default=10)
+    field_size: Mapped[str] = mapped_column(String(50), default="")
+    intensity: Mapped[str] = mapped_column(String(10), default="medium")
+    equipment: Mapped[list] = mapped_column(JSONB, default=list)
+    setup: Mapped[str] = mapped_column(Text, default="")
+    steps: Mapped[list] = mapped_column(JSONB, default=list)
+    rules: Mapped[list] = mapped_column(JSONB, default=list)
+    coaching_points: Mapped[list] = mapped_column(JSONB, default=list)
+    success_criteria: Mapped[list] = mapped_column(JSONB, default=list)
+    variants: Mapped[dict] = mapped_column(JSONB, default=dict)  # {"easier": [], "harder": []}
+    scheme: Mapped[dict | None] = mapped_column(JSONB)
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+
+
+class Favorite(SyncMixin, Base):
+    __tablename__ = "favorites"
+
+    drill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("drills.id", ondelete="CASCADE"))
+
+
+class TrainingSession(SyncMixin, Base):
+    """Тренировка. План (блоки) хранится документом в `blocks`, чтобы правка плана
+    была атомарной и конфликт разрешался целиком по занятию."""
+
+    __tablename__ = "training_sessions"
+
+    team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(150))
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    goal: Mapped[str] = mapped_column(Text, default="")
+    duration_min: Mapped[int] = mapped_column(Integer)
+    players_expected: Mapped[int | None] = mapped_column(Integer)
+    field_type: Mapped[str | None] = mapped_column(String(30))
+    equipment: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    ai_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_assumptions: Mapped[list] = mapped_column(JSONB, default=list)
+    blocks: Mapped[list] = mapped_column(JSONB, default=list)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actual: Mapped[dict] = mapped_column(JSONB, default=dict)
+    conflict_of: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class Attendance(SyncMixin, Base):
+    """id на клиенте = uuid5(session_id, player_id), поэтому две отметки одного
+    игрока на одном занятии с разных устройств сходятся в одну запись."""
+
+    __tablename__ = "attendance"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_sessions.id", ondelete="CASCADE")
+    )
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(10))
+
+
+class SessionNote(SyncMixin, Base):
+    __tablename__ = "session_notes"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_sessions.id", ondelete="CASCADE")
+    )
+    block_id: Mapped[str | None] = mapped_column(String(64))
+    text: Mapped[str] = mapped_column(Text)
+    noted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SessionReport(SyncMixin, Base):
+    __tablename__ = "session_reports"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_sessions.id", ondelete="CASCADE")
+    )
+    raw_input: Mapped[str] = mapped_column(Text, default="")
+    rating: Mapped[int | None] = mapped_column(Integer)
+    went_well: Mapped[str] = mapped_column(Text, default="")
+    to_improve: Mapped[str] = mapped_column(Text, default="")
+    observations: Mapped[str] = mapped_column(Text, default="")
+    # Предложения модели хранятся отдельно от наблюдений тренера.
+    ai_suggestions: Mapped[list] = mapped_column(JSONB, default=list)
+    coach_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlayerAssessment(SyncMixin, Base):
+    __tablename__ = "player_assessments"
+
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_sessions.id", ondelete="SET NULL")
+    )
+    skill: Mapped[str] = mapped_column(String(40))
+    score: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
