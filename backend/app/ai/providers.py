@@ -150,9 +150,10 @@ class MockProvider:
             raise ProviderError("mock failure")
         if self.scripted:
             return Completion(self.scripted.pop(0), 100, 200, "mock")
-        from app.ai.rules import mock_answer_from_prompt
+        from app.ai.rules import mock_answer_from_prompt, mock_report_from_prompt
 
-        return Completion(json.dumps(mock_answer_from_prompt(user), ensure_ascii=False), 100, 200, "mock")
+        answer = mock_answer_from_prompt(user) if "ДАННЫЕ:" in user else mock_report_from_prompt(user)
+        return Completion(json.dumps(answer, ensure_ascii=False), 100, 200, "mock")
 
 
 def build_provider(st: Settings) -> LLMProvider:

@@ -8,8 +8,9 @@ import 'ui/screens/auth/auth_screens.dart';
 import 'ui/screens/auth/onboarding_screen.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
-import 'ui/screens/placeholder.dart';
 import 'ui/screens/profile/profile_screen.dart';
+import 'ui/screens/sessions/report_screens.dart';
+import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
 import 'ui/screens/team/team_screens.dart';
 import 'ui/theme.dart';
@@ -27,12 +28,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       final auth = ref.read(authProvider);
       final loc = state.matchedLocation;
       final isAuthPage = loc == '/login' || loc == '/register';
-      if (!auth.ready) return loc == '/splash' ? null : '/splash';
+      // Пока идёт загрузка, запоминаем, куда шёл пользователь (прямая ссылка, перезапуск).
+      String toSplash() => loc == '/splash'
+          ? '/splash${state.uri.hasQuery ? '?${state.uri.query}' : ''}'
+          : Uri(path: '/splash', queryParameters: {'from': state.uri.toString()}).toString();
+      if (!auth.ready) return loc == '/splash' ? null : toSplash();
       if (!auth.signedIn) return isAuthPage ? null : '/login';
       final onboarded = ref.read(onboardedProvider);
-      if (!onboarded.hasValue) return loc == '/splash' ? null : '/splash';
+      if (!onboarded.hasValue) return loc == '/splash' ? null : toSplash();
       if (onboarded.value == false) return loc == '/onboarding' ? null : '/onboarding';
-      if (isAuthPage || loc == '/splash' || loc == '/onboarding') return '/home';
+      if (loc == '/splash') {
+        final from = state.uri.queryParameters['from'];
+        return from != null && !from.startsWith('/splash') && from != '/login' ? from : '/home';
+      }
+      if (isAuthPage || loc == '/onboarding') return '/home';
       return null;
     },
     routes: [
@@ -40,7 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
-      GoRoute(path: '/run/:id', builder: (_, _) => const PlaceholderScreen('Режим занятия')),
+      GoRoute(path: '/run/:id', builder: (_, s) => RunScreen(sessionId: s.pathParameters['id']!)),
       GoRoute(
         path: '/attendance/:sessionId',
         builder: (_, s) => AttendanceScreen(sessionId: s.pathParameters['sessionId']!, teamId: s.uri.queryParameters['team']!),
@@ -53,7 +62,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/sessions', builder: (_, _) => const SessionsScreen(), routes: [
               GoRoute(path: 'new', builder: (_, _) => const AiWizardScreen()),
               GoRoute(path: ':id', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
-              GoRoute(path: ':id/summary', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
+              GoRoute(path: ':id/summary', builder: (_, s) => SessionSummaryScreen(sessionId: s.pathParameters['id']!)),
+              GoRoute(path: ':id/report', builder: (_, s) => ReportScreen(sessionId: s.pathParameters['id']!)),
             ]),
           ]),
           StatefulShellBranch(routes: [

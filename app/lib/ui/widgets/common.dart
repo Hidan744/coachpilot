@@ -24,7 +24,7 @@ class SyncBadge extends ConsumerWidget {
       tooltip: tip,
       icon: Icon(icon),
       onPressed: () {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tip)));
+        showInfo(context, tip);
         ref.read(syncEngineProvider).sync();
       },
     );
@@ -79,13 +79,13 @@ class SectionTitle extends StatelessWidget {
       );
 }
 
-void showError(BuildContext context, Object e) {
-  final msg = e is ApiException ? e.message : 'Что-то пошло не так. Попробуйте ещё раз.';
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-}
+void showError(BuildContext context, Object e) =>
+    showInfo(context, e is ApiException ? e.message : 'Что-то пошло не так. Попробуйте ещё раз.');
 
-void showInfo(BuildContext context, String msg) =>
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+/// Новое сообщение заменяет предыдущее, а не встаёт в очередь за ним.
+void showInfo(BuildContext context, String msg) => ScaffoldMessenger.of(context)
+  ..hideCurrentSnackBar()
+  ..showSnackBar(SnackBar(content: Text(msg)));
 
 Future<bool> confirm(BuildContext context, String title, {String? text, String ok = 'Удалить'}) async =>
     await showDialog<bool>(

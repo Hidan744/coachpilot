@@ -108,3 +108,23 @@ def mock_answer_from_prompt(user_prompt: str) -> dict:
     plan = plan_by_rules(payload["session"], payload["candidates"])
     plan["assumptions"] = ["Тестовый ответ (mock-провайдер)."]
     return plan
+
+
+def mock_report_from_prompt(user_prompt: str) -> dict:
+    """Mock-провайдер для отчёта: раскладывает ответы тренера по разделам."""
+    fields = {}
+    for line in user_prompt.splitlines():
+        for key, prefix in (("went_well", "Что получилось (тренер): "), ("to_improve", "Что улучшить (тренер): "),
+                            ("observations", "Наблюдения (тренер): "), ("raw", "Свободная заметка тренера: ")):
+            if line.startswith(prefix):
+                value = line[len(prefix):]
+                fields[key] = "" if value == "—" else value
+    notes = [ln[2:] for ln in user_prompt.split("Заметки во время занятия:", 1)[1].split("Оценка", 1)[0].splitlines()
+             if ln.startswith("- ") and ln != "- нет"]
+    observations = "\n".join(f"• {x}" for x in [fields.get("observations"), fields.get("raw"), *notes] if x)
+    return {
+        "went_well": f"• {fields['went_well']}" if fields.get("went_well") else "",
+        "to_improve": f"• {fields['to_improve']}" if fields.get("to_improve") else "",
+        "observations": observations,
+        "suggestions": ["Стоит повторить ключевое упражнение с усложнением в следующем занятии."],
+    }

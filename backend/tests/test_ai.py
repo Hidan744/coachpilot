@@ -205,7 +205,7 @@ async def test_player_names_not_sent_to_ai(client, seeded, provider):
     ]
     res = (await client.post("/sync/push", headers=h, json={"changes": changes})).json()["results"]
     assert all(r["status"] == "applied" for r in res)
-    await plan(client, h, team_id=str(t), constraints="Святослав после травмы, без рывков")
+    await plan(client, h, team_id=str(t), constraints="Святослав после травмы, без рывков; Святославу без контакта")
     prompt = provider.calls[-1][1]
     assert "Святослав" not in prompt and "Пономар" not in prompt
     assert "игрок хорошо открывался" in prompt and "игрок после травмы" in prompt
@@ -219,3 +219,57 @@ async def test_validation_errors(client, seeded, provider):
 
 def test_team_age():
     assert team_age("U9") == 9 and team_age("adult") == AGE_BY_GROUP["adult"]
+
+
+async def _session_with_players(client, h):
+    t, p1, p2, s = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    changes = [
+        {"entity": "teams", "id": str(t), "op": "upsert",
+         "data": {"name": "T", "age_group": "U12", "level": "amateur", "default_players": 14}},
+        {"entity": "players", "id": str(p1), "op": "upsert", "data": {"team_id": str(t), "first_name": "Саша",
+                                                                        "last_name": "Петров"}},
+        {"entity": "players", "id": str(p2), "op": "upsert", "data": {"team_id": str(t), "first_name": "Миша"}},
+        {"entity": "training_sessions", "id": str(s), "op": "upsert", "data": {
+            "team_id": str(t), "title": "S", "duration_min": 60, "status": "done", "goal": "Передачи",
+            "blocks": [{"id": "b1", "phase": "main", "title": "Рондо", "duration_min": 60}],
+            "actual": {"blocks": {"b1": 3300}, "skipped": []}}},
+        {"entity": "session_notes", "id": str(uuid.uuid4()), "op": "upsert", "data": {
+            "session_id": str(s), "block_id": "b1", "text": "Мише тяжело в отборе",
+            "noted_at": "2026-10-19T18:20:00Z"}},
+    ]
+    res = (await client.post("/sync/push", headers=h, json={"changes": changes})).json()["results"]
+    assert all(r["status"] == "applied" for r in res), res
+    return s
+
+
+async def test_report_pseudonymized_and_restored(client, provider):
+    h, _ = await make_user(client)
+    s = await _session_with_players(client, h)
+    r = await client.post("/ai/report", headers=h, json={
+        "session_id": str(s), "went_well": "Саша Петров отлично открывался", "to_improve": "Первое касание",
+        "raw_input": "Сашу хвалил за темп", "rating": 4})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    prompt = provider.calls[-1][1]
+    for name in ("Саша", "Сашу", "Петров", "Мише"):
+        assert name not in prompt, name
+    assert "Игрок_1 отлично открывался" in prompt and "факт 55 мин" in prompt
+    # имена вернулись в текст отчёта
+    assert "Саша Петров отлично открывался" in out["went_well"]
+    assert "Миша" in out["observations"]
+    assert out["source"] == "ai" and out["suggestions"]
+
+
+async def test_report_fallback_and_unknown_session(client):
+    app.dependency_overrides[get_provider] = lambda: MockProvider(fail=True)
+    try:
+        h, _ = await make_user(client)
+        s = await _session_with_players(client, h)
+        out = (await client.post("/ai/report", headers=h, json={
+            "session_id": str(s), "went_well": "Темп", "raw_input": "Сыро в обороне"})).json()
+        assert out["source"] == "manual" and out["went_well"] == "Темп" and "Сыро" in out["observations"]
+        assert out["warnings"]
+        r = await client.post("/ai/report", headers=h, json={"session_id": str(uuid.uuid4())})
+        assert r.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_provider, None)

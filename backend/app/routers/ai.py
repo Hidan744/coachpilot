@@ -3,7 +3,7 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai import planner
+from app.ai import planner, report
 from app.ai.providers import LLMProvider, build_provider
 from app.config import get_settings
 from app.db import get_db
@@ -33,6 +33,19 @@ async def plan(
         return await planner.generate_plan(db, provider, user.id, body)
     except ValueError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+
+
+@router.post("/report", response_model=report.ReportOut)
+async def report_structure(
+    body: report.ReportRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    provider: LLMProvider = Depends(get_provider),
+) -> report.ReportOut:
+    try:
+        return await report.structure_report(db, provider, user.id, body)
+    except LookupError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
 
 
 @router.get("/quota")

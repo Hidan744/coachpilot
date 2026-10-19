@@ -166,9 +166,14 @@ async def select_candidates(db: AsyncSession, owner_id, req: PlanRequest, limit:
     return picked
 
 
+def stem(word: str) -> str:
+    """Основа имени для поиска падежных форм: «Саша» → «Саш» (Сашу, Саше, Сашей)."""
+    return word[:-1] if len(word) >= 4 and word[-1].lower() in "аяйьео" else word
+
+
 def name_scrubber(names: list[str]):
     """Заменяет имена игроков на «игрок», чтобы персональные данные не уходили в AI."""
-    words = sorted({n.strip() for n in names if len(n.strip()) >= 3}, key=len, reverse=True)
+    words = sorted({stem(n.strip()) for n in names if len(n.strip()) >= 3}, key=len, reverse=True)
     if not words:
         return lambda s: s
     rx = re.compile(r"\b(" + "|".join(re.escape(w) for w in words) + r")\w*", re.IGNORECASE)
