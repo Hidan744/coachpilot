@@ -14,3 +14,4 @@ app/.idea/
 *.iml
 # OS
 .DS_Store
+node_modules/
