@@ -29,9 +29,33 @@ class ProfileScreen extends ConsumerWidget {
           leading: const CircleAvatar(child: Icon(Icons.person)),
           title: Text(auth.name),
           subtitle: Text([p['email'], p['city'], p['coaching_level']].whereType<String>().join(' · ')),
-          trailing: const Icon(Icons.edit_outlined),
-          onTap: () => _editProfile(context, ref, p),
+          trailing: auth.demo ? null : const Icon(Icons.edit_outlined),
+          onTap: auth.demo ? null : () => _editProfile(context, ref, p),
         ),
+        if (auth.demo) ...[
+          Card(
+            margin: const EdgeInsets.all(16),
+            color: Theme.of(context).colorScheme.tertiaryContainer,
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Вы в демо-режиме. Всё работает, но данные хранятся только в этом браузере: '
+                'нет синхронизации между устройствами и AI-генерации. '
+                'Чтобы начать заново, нажмите «Сбросить демо».',
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.restart_alt),
+            title: const Text('Сбросить демо'),
+            subtitle: const Text('Удалить все данные демо-режима'),
+            onTap: () async {
+              if (await confirm(context, 'Сбросить демо?', text: 'Команды, планы и отчёты будут удалены.', ok: 'Сбросить')) {
+                await ref.read(authProvider.notifier).logout();
+              }
+            },
+          ),
+        ] else ...[
         const SectionTitle('Данные и синхронизация'),
         ListTile(
           leading: Icon(status?.error != null ? Icons.cloud_off : Icons.cloud_done_outlined),
@@ -93,6 +117,7 @@ class ProfileScreen extends ConsumerWidget {
           title: const Text('Удалить аккаунт и все данные'),
           onTap: () => _deleteAccount(context, ref),
         ),
+        ],
         const SizedBox(height: 24),
         Center(child: Text('CoachPilot 0.1.0', style: Theme.of(context).textTheme.bodySmall)),
         const SizedBox(height: 24),

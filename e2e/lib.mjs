@@ -77,11 +77,32 @@ async function clickLoc(page, loc) {
   }
 }
 
-/** Клик по элементу с текстом (кнопки, плитки, вкладки). */
+/** Клик по элементу с текстом (кнопки, плитки, вкладки).
+ * Берём самый вложенный элемент с этим текстом (не контейнер, который его содержит),
+ * среди видимых — последний. */
 export async function tap(page, text, { exact = false } = {}) {
-  const loc = target(page, text, exact).last();
-  await loc.waitFor({ state: 'attached', timeout: 15000 });
-  await clickLoc(page, loc);
+  const deadline = Date.now() + 15000;
+  for (;;) {
+    const found = await page.evaluate(({ text, exact }) => {
+      document.querySelectorAll('[data-e2e-target]').forEach((e) => e.removeAttribute('data-e2e-target'));
+      const norm = (e) => (e.getAttribute('aria-label') || e.textContent || '').trim();
+      const ok = (e) => (exact ? norm(e) === text || (e.getAttribute('aria-label') || '').trim() === text : norm(e).includes(text));
+      const nodes = [...document.querySelectorAll('flt-semantics, [aria-label]')].filter(ok);
+      const inner = nodes.filter((e) => !nodes.some((o) => o !== e && e.contains(o)));
+      const vis = inner.filter((e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
+      });
+      const pick = (vis.length ? vis : inner).at(-1);
+      if (!pick) return false;
+      pick.setAttribute('data-e2e-target', '1');
+      return true;
+    }, { text, exact });
+    if (found) break;
+    if (Date.now() > deadline) throw new Error(`не найден элемент «${text}»`);
+    await page.waitForTimeout(250);
+  }
+  await clickLoc(page, page.locator('[data-e2e-target]').first());
   await page.waitForTimeout(400);
 }
 

@@ -99,6 +99,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
         const SizedBox(height: 8),
         TextButton(onPressed: () => context.go('/register'), child: const Text('Нет аккаунта? Зарегистрироваться')),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () => ref.read(authProvider.notifier).startDemo(),
+          icon: const Icon(Icons.play_circle_outline),
+          label: const Text('Попробовать без регистрации'),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Демо-режим: данные хранятся только на этом устройстве, планы собираются из библиотеки без AI.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       ]);
 }
 

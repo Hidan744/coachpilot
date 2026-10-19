@@ -13,6 +13,9 @@ import '../sync/sync_engine.dart';
 
 const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://localhost:8000');
 
+/// Сборка-демо без сервера (публичная web-версия): сразу открывается демо-режим.
+const demoOnly = bool.fromEnvironment('DEMO_ONLY');
+
 /// Переопределяются в main() и в тестах.
 final dbProvider = Provider<AppDb>((ref) => throw UnimplementedError());
 final tokenStoreProvider = Provider<TokenStore>((ref) => SecureTokenStore());
@@ -39,7 +42,8 @@ final repoProvider = Provider<Repo>((ref) {
   repo.onLocalChange = () {
     debounce?.cancel();
     debounce = Timer(const Duration(seconds: 2), () {
-      if (ref.read(authProvider).signedIn) ref.read(syncEngineProvider).sync();
+      final auth = ref.read(authProvider);
+      if (auth.signedIn && !auth.demo) ref.read(syncEngineProvider).sync();
     });
   };
   ref.onDispose(() => debounce?.cancel());
@@ -56,11 +60,14 @@ final pendingCountProvider = StreamProvider<int>((ref) => ref.watch(repoProvider
 // ------------------------------------------------------------------ авторизация
 
 class AuthState {
-  const AuthState({this.ready = false, this.signedIn = false, this.profile});
+  const AuthState({this.ready = false, this.signedIn = false, this.profile, this.demo = false});
 
   final bool ready;
   final bool signedIn;
   final Json? profile;
+
+  /// Демо-режим: без аккаунта и сервера, данные только на этом устройстве, планы без AI.
+  final bool demo;
 
   String get name => profile?['name'] as String? ?? '';
 }
@@ -84,6 +91,11 @@ class AuthController extends Notifier<AuthState> {
 
   /// Вход без сети: если на устройстве есть сессия, пускаем сразу с сохранённым профилем.
   Future<void> _restore() async {
+    if (await _db.getKv(_demoKey) == '1') {
+      state = AuthState(ready: true, signedIn: true, demo: true, profile: _demoProfile);
+      return;
+    }
+    if (demoOnly) return startDemo();
     if (await _api.hasSession) {
       final cached = await _db.getKv(_profileKey);
       state = AuthState(ready: true, signedIn: true, profile: cached == null ? null : jsonDecode(cached) as Json);
@@ -137,8 +149,25 @@ class AuthController extends Notifier<AuthState> {
     state = AuthState(ready: true, signedIn: true, profile: me);
   }
 
+  static const _demoKey = 'demo';
+  static const _demoProfile = {'name': 'Тренер', 'email': 'Демо-режим'};
+
+  /// Попробовать без регистрации: всё работает на устройстве, без синхронизации и AI.
+  Future<void> startDemo() async {
+    await _db.setKv(_demoKey, '1');
+    unawaited(ref.read(analyticsProvider).track('demo_started'));
+    state = const AuthState(ready: true, signedIn: true, demo: true, profile: _demoProfile);
+  }
+
   Future<void> logout({bool remote = true}) async {
     _stopBackgroundSync();
+    if (state.demo) {
+      await _db.wipe();
+      await _db.deleteKv(_demoKey);
+      state = const AuthState(ready: true);
+      if (demoOnly) await startDemo();
+      return;
+    }
     if (remote) {
       final refresh = await _api.refreshToken;
       if (refresh != null) {

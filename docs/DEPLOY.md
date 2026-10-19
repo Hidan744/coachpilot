@@ -68,3 +68,14 @@ flutter build ipa --release --dart-define=API_URL=https://api.coachpilot.ru     
 * Журнал API: `docker compose logs -f api` — медленные (>3 с) и ошибочные запросы с `x-request-id`.
 * Ошибки приложения и продуктовые события — таблица `events` (см. [METRICS.md](METRICS.md)).
 * Журнал AI-запросов (провайдер, токены, время, ошибки валидации) — таблица `ai_requests`.
+
+## Демо-версия в браузере (без сервера)
+
+Сборка с `DEMO_ONLY=true` сразу открывает демо-режим: всё работает в браузере, данные хранятся
+в IndexedDB этого браузера, планы собираются из встроенной библиотеки по правилам (без AI).
+```bash
+cd app
+flutter build web --release --no-web-resources-cdn --dart-define=DEMO_ONLY=true
+```
+Папку `build/web` можно раздать любым статическим хостингом (Caddy, Nginx, Yandex Object Storage).
+В обычной сборке тот же режим доступен по кнопке «Попробовать без регистрации» на экране входа.

@@ -224,6 +224,7 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       showInfo(context, 'Опишите цель занятия — от неё зависит подбор упражнений');
       return;
     }
+    if (ref.read(authProvider).demo) return _offline();
     setState(() => _busy = true);
     final started = DateTime.now();
     try {
@@ -427,8 +428,11 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'AI предложит черновик плана из упражнений библиотеки. Вы сможете изменить любой блок. '
-            'Имена игроков в AI не передаются.',
+            ref.watch(authProvider).demo
+                ? 'Демо-режим: план собирается из библиотеки по правилам, без AI. '
+                    'С аккаунтом план составляет AI с учётом истории команды.'
+                : 'AI предложит черновик плана из упражнений библиотеки. Вы сможете изменить любой блок. '
+                    'Имена игроков в AI не передаются.',
             style: t.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),

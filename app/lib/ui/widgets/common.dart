@@ -11,6 +11,13 @@ class SyncBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(authProvider).demo) {
+      return IconButton(
+        tooltip: 'Демо-режим',
+        icon: const Icon(Icons.phone_android),
+        onPressed: () => showInfo(context, 'Демо-режим: данные хранятся только в этом браузере и не синхронизируются.'),
+      );
+    }
     final status = ref.watch(syncStatusProvider).value;
     final pending = ref.watch(pendingCountProvider).value ?? 0;
     final (IconData icon, String tip) = status?.running == true

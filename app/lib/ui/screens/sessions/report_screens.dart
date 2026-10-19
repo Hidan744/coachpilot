@@ -100,6 +100,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       showInfo(context, 'Напишите или надиктуйте хотя бы пару фраз о занятии');
       return;
     }
+    if (ref.read(authProvider).demo) {
+      showInfo(context, 'В демо-режиме AI-оформление недоступно — заполните разделы вручную.');
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _save(confirmed: false);
