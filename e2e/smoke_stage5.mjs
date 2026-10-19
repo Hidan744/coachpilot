@@ -28,7 +28,7 @@ try {
   await see(page, 'Как выполнять');
   await fill(page, 'Заметка / адаптация к группе', 'Двое вратарей по очереди');
   await tap(page, 'Сохранить', { exact: true });
-  await tap(page, 'Сохранить план');
+  await tap(page, 'Сохранить', { exact: true });
   await see(page, 'Провести');
   await shot(page, 's5-03-plan-saved');
   step('заметка к блоку, план сохранён');

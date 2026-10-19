@@ -656,7 +656,7 @@ class _PlanEditor extends ConsumerWidget {
                   ? FilledButton.icon(
                       key: const Key('plan_save'),
                       icon: const Icon(Icons.check),
-                      label: const Text('Сохранить план'),
+                      label: const Text('Сохранить', maxLines: 1),
                       onPressed: s.blocks.isEmpty
                           ? null
                           : () async {

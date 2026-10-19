@@ -16,7 +16,7 @@ try {
   await tap(page, 'Передачи и открывания');
   await tap(page, 'Сгенерировать план');
   await see(page, 'Предложение AI', 30000);
-  await tap(page, 'Сохранить план');
+  await tap(page, 'Сохранить', { exact: true });
   await see(page, 'Провести');
   await page.waitForTimeout(3000); // план ушёл на сервер
   step('план готов');
