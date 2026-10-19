@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
 import '../../sync/api_client.dart';
@@ -113,4 +114,10 @@ class AsyncView<T> extends StatelessWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Ошибка: $e'))),
       );
+}
+
+/// Назад, а если экран открыт по прямой ссылке и возвращаться некуда — на [fallback].
+void popOr(BuildContext context, String fallback) {
+  final router = GoRouter.of(context);
+  router.canPop() ? router.pop() : router.go(fallback);
 }

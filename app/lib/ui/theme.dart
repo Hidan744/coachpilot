@@ -15,7 +15,7 @@ class AppTheme {
         centerTitle: false,
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: base.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, color: scheme.onSurface),
+        titleTextStyle: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: scheme.onSurface),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
