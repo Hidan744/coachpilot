@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.db import engine
-from app.routers import account, auth, sync
+from app.routers import account, ai, auth, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(sync.router)
+app.include_router(ai.router)
 
 
 @app.get("/health", tags=["system"])

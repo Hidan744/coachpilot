@@ -38,8 +38,19 @@ const byLabel = (label) => `input[aria-label^="${label}"], textarea[aria-label^=
 export async function fill(page, label, value) {
   const el = page.locator(byLabel(label)).first();
   await el.waitFor({ state: 'attached', timeout: 15000 });
-  await clickLoc(page, el);
-  await el.fill(value, { force: true });
+  // Flutter пересоздаёт DOM-поле при фокусе, поэтому вводим текст в активный элемент
+  // с клавиатуры и проверяем результат.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await clickLoc(page, el);
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Delete');
+    if (value) await page.keyboard.insertText(value);
+    await page.waitForTimeout(150);
+    const got = await page.evaluate(() => document.activeElement?.value ?? null);
+    if (got === value) return;
+  }
+  throw new Error(`не удалось ввести текст в поле «${label}»`);
 }
 
 async function clickLoc(page, loc) {

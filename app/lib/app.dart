@@ -10,6 +10,7 @@ import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
 import 'ui/screens/placeholder.dart';
 import 'ui/screens/profile/profile_screen.dart';
+import 'ui/screens/sessions/sessions_screens.dart';
 import 'ui/screens/team/team_screens.dart';
 import 'ui/theme.dart';
 
@@ -39,6 +40,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
+      GoRoute(path: '/run/:id', builder: (_, _) => const PlaceholderScreen('Режим занятия')),
       GoRoute(
         path: '/attendance/:sessionId',
         builder: (_, s) => AttendanceScreen(sessionId: s.pathParameters['sessionId']!, teamId: s.uri.queryParameters['team']!),
@@ -47,7 +49,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, shell) => _Shell(shell),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomeScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/sessions', builder: (_, _) => const PlaceholderScreen('Тренировки'))]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/sessions', builder: (_, _) => const SessionsScreen(), routes: [
+              GoRoute(path: 'new', builder: (_, _) => const AiWizardScreen()),
+              GoRoute(path: ':id', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
+              GoRoute(path: ':id/summary', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
+            ]),
+          ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/library', builder: (_, _) => const LibraryScreen(), routes: [
               GoRoute(path: 'drill/:id', builder: (_, s) => DrillScreen(drillId: s.pathParameters['id']!)),

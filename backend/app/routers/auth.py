@@ -40,7 +40,7 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
     )
     db.add(user)
     await db.flush()
-    db.add(Subscription(user_id=user.id))
+    db.add(Subscription(user_id=user.id, ai_quota_month=get_settings().ai_free_quota_month))
     return await _issue_tokens(db, user)
 
 

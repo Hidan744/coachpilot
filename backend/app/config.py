@@ -22,6 +22,15 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # AI: mock | yandexgpt | gigachat | openai_compat
+    ai_provider: str = "mock"
+    ai_api_key: str = ""
+    ai_folder_id: str = ""  # YandexGPT
+    ai_model: str = ""
+    ai_base_url: str = ""  # openai_compat
+    ai_ca_bundle: str = ""  # GigaChat: путь к сертификату НУЦ Минцифры
+    ai_free_quota_month: int = 30
+
 
 @lru_cache
 def get_settings() -> Settings:
