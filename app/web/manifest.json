@@ -1,11 +1,11 @@
 {
-    "name": "coachpilot",
-    "short_name": "coachpilot",
+    "name": "CoachPilot",
+    "short_name": "CoachPilot",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "AI-помощник футбольного тренера",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

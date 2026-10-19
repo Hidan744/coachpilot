@@ -394,6 +394,7 @@ class _DrillEditScreenState extends ConsumerState<DrillEditScreen> {
       tags: _orig?.tags ?? const [],
     );
     await ref.read(repoProvider).put(Entities.drills, d);
+    if (_orig == null) ref.read(analyticsProvider).track('drill_created', {'has_scheme': d.scheme != null});
     if (!mounted) return;
     context.pop();
     if (_orig == null) context.push('/library/drill/${d.id}');

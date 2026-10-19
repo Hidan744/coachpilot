@@ -36,6 +36,9 @@ class SyncEngine {
   Future<void>? _inFlight;
   bool _again = false;
 
+  /// Вызывается после каждой синхронизации (аналитика, отправка событий).
+  Future<void> Function(SyncStatus status)? afterSync;
+
   Stream<SyncStatus> get status => _status.stream;
   SyncStatus get current => _current;
 
@@ -67,6 +70,11 @@ class SyncEngine {
       _emit(SyncStatus(lastSyncAt: DateTime.now(), conflicts: conflicts));
     } on ApiException catch (e) {
       _emit(SyncStatus(lastSyncAt: _current.lastSyncAt, error: e.message, conflicts: conflicts));
+    }
+    try {
+      await afterSync?.call(_current);
+    } catch (_) {
+      // побочные действия не должны ломать синхронизацию
     }
   }
 

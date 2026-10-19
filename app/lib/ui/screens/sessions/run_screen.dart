@@ -94,6 +94,7 @@ class _RunScreenState extends ConsumerState<RunScreen> with WidgetsBindingObserv
     } else {
       r.start(now);
       if (s.status != 'in_progress') {
+        ref.read(analyticsProvider).track('session_started', {'blocks': s.blocks.length});
         final started = s.copyWith(status: 'in_progress', startedAt: s.startedAt ?? now);
         _session = started;
         await ref.read(repoProvider).put(Entities.sessions, started);
@@ -128,6 +129,12 @@ class _RunScreenState extends ConsumerState<RunScreen> with WidgetsBindingObserv
     final finished = s.copyWith(status: 'done', startedAt: s.startedAt ?? now, finishedAt: now, actual: r.toActual());
     await ref.read(repoProvider).put(Entities.sessions, finished);
     await ref.read(dbProvider).deleteKv(_key);
+    ref.read(analyticsProvider).track('session_finished', {
+      'blocks': s.blocks.length,
+      'skipped': r.skipped.length,
+      'minutes': (r.actualSec.values.fold<int>(0, (a, b) => a + b) / 60).round(),
+      'notes_count': (await ref.read(repoProvider).list(Entities.notes, SessionNote.fromJson, parentId: s.id)).length,
+    });
     if (mounted) context.pushReplacement('/sessions/${s.id}/report');
   }
 

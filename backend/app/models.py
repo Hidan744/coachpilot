@@ -111,6 +111,23 @@ class AIRequest(Base):
     created_at: Mapped[datetime] = _now_col()
 
 
+class Event(Base):
+    """Продуктовая аналитика и ошибки клиента. Хранится у себя (152-ФЗ), без сторонних SDK."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(50), index=True)
+    props: Mapped[dict] = mapped_column(JSONB, default=dict)
+    platform: Mapped[str] = mapped_column(String(20), default="")
+    app_version: Mapped[str] = mapped_column(String(20), default="")
+    client_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _now_col()
+
+
 # ---------------------------------------------------------------- синхронизируемые
 
 

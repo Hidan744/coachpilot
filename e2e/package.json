@@ -1,0 +1,9 @@
+{
+  "name": "coachpilot-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Сквозные сценарии CoachPilot в браузере (Flutter web + Playwright)",
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

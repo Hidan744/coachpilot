@@ -6,9 +6,9 @@ export const API = process.env.API_URL ?? 'http://localhost:8000';
 export const SHOTS = process.env.SHOTS ?? '/tmp';
 
 export async function launch() {
-  const browser = await chromium.launch({
-    executablePath: process.env.CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  });
+  // CHROME="" — использовать Chromium, установленный Playwright (CI).
+  const chrome = process.env.CHROME ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+  const browser = await chromium.launch(chrome ? { executablePath: chrome } : {});
   const context = await browser.newContext({ viewport: { width: 400, height: 860 }, locale: 'ru-RU' });
   const page = await context.newPage();
   page.on('pageerror', (e) => console.log('pageerror:', e.message));

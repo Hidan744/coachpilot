@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,8 +20,16 @@ Future<void> main() async {
   final db = AppDb.open();
   await SyncEngine(db, ApiClient(baseUrl: apiUrl, tokens: MemoryTokenStore()))
       .ensureBundledCatalog(() => rootBundle.loadString('assets/catalog.json'));
-  runApp(ProviderScope(
-    overrides: [dbProvider.overrideWithValue(db)],
-    child: const CoachPilotApp(),
-  ));
+  final container = ProviderContainer(overrides: [dbProvider.overrideWithValue(db)]);
+  final analytics = container.read(analyticsProvider);
+  // Необработанные ошибки — в журнал аналитики, чтобы видеть сбои на устройствах тренеров.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    analytics.error(details.exception, details.stack, where: 'flutter');
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    analytics.error(e, st, where: 'platform');
+    return true;
+  };
+  runApp(UncontrolledProviderScope(container: container, child: const CoachPilotApp()));
 }

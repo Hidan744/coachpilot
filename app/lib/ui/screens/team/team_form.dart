@@ -37,6 +37,7 @@ class _TeamFormState extends ConsumerState<TeamForm> {
       notes: widget.team?.notes ?? '',
     );
     await ref.read(repoProvider).put(Entities.teams, team);
+    if (widget.team == null) ref.read(analyticsProvider).track('team_created', {'age_group': team.ageGroup});
     ref.read(currentTeamIdProvider.notifier).select(team.id);
     widget.onSaved(team);
   }

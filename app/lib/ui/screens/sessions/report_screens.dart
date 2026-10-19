@@ -82,6 +82,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       confirmedAt: confirmed ? DateTime.now() : null,
     );
     await ref.read(repoProvider).put(Entities.reports, report);
+    if (confirmed) {
+      ref.read(analyticsProvider).track('report_confirmed', {'ai_suggestions': _suggestions.length, 'rating': _rating});
+    }
     if (!mounted) return;
     if (confirmed) {
       context.pushReplacement('/sessions/${widget.sessionId}/summary');

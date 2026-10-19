@@ -1,8 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers.dart';
+import '../../../data/models.dart';
+import '../../../sync/api_client.dart';
 import '../../widgets/common.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -56,7 +61,21 @@ class ProfileScreen extends ConsumerWidget {
           title: Text('Офлайн-доступ'),
           subtitle: Text('Команды, тренировки, библиотека и схемы хранятся на телефоне и доступны без интернета.'),
         ),
+        Consumer(builder: (context, ref, _) {
+          final q = ref.watch(_quotaProvider).value;
+          return ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: const Text('AI-генерации в этом месяце'),
+            subtitle: Text(q == null ? 'Доступно при подключении к интернету' : '${q['used']} из ${q['limit']}'),
+          );
+        }),
         const SectionTitle('Аккаунт'),
+        ListTile(
+          leading: const Icon(Icons.download_outlined),
+          title: const Text('Экспорт моих данных'),
+          subtitle: const Text('Все команды, тренировки и отчёты в формате JSON'),
+          onTap: () => _export(context, ref),
+        ),
         ListTile(
           leading: const Icon(Icons.logout),
           title: const Text('Выйти'),
@@ -141,3 +160,23 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 final _failedProvider = StreamProvider((ref) => ref.watch(repoProvider).watchFailed());
+
+final _quotaProvider = FutureProvider<Json?>((ref) async {
+  try {
+    return await ref.watch(apiProvider).get('/ai/quota') as Json;
+  } on ApiException {
+    return null;
+  }
+});
+
+Future<void> _export(BuildContext context, WidgetRef ref) async {
+  try {
+    await ref.read(syncEngineProvider).sync();
+    final data = await ref.read(apiProvider).get('/account/export') as Json;
+    final count = (data['data'] as Json).values.fold<int>(0, (a, l) => a + (l as List).length);
+    await Clipboard.setData(ClipboardData(text: const JsonEncoder.withIndent('  ').convert(data)));
+    if (context.mounted) showInfo(context, 'Скопировано записей: $count. Вставьте в письмо или файл.');
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+  }
+}

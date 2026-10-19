@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Синхронизация и AI работают через интернет; без разрешения релизная сборка не выходит в сеть. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <application
-        android:label="coachpilot"
+        android:label="CoachPilot"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

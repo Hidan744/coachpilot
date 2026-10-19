@@ -42,3 +42,10 @@ async def make_user(client, email="coach@example.com", password="secret123", nam
     )
     assert r.status_code == 201, r.text
     return {"Authorization": f"Bearer {r.json()['access_token']}"}, r.json()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    from app.ratelimit import login_limiter
+
+    login_limiter._hits.clear()

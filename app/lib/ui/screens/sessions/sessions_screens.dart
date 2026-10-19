@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -223,10 +225,17 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       return;
     }
     setState(() => _busy = true);
+    final started = DateTime.now();
     try {
       // Команда должна быть на сервере, чтобы AI учёл историю её занятий.
       await ref.read(syncEngineProvider).sync();
       final resp = await ref.read(apiProvider).post('/ai/plan', _request(answer: answer)) as Json;
+      ref.read(analyticsProvider).track('ai_plan_generated', {
+        'source': resp['source'],
+        'ms': DateTime.now().difference(started).inMilliseconds,
+        'warnings': (resp['warnings'] as List).length,
+        'clarifying': resp['clarifying_question'] != null,
+      });
       if (!mounted) return;
       final question = resp['clarifying_question'] as String?;
       if (question != null && (resp['blocks'] as List).isEmpty) {
@@ -277,6 +286,7 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       if (mounted) showInfo(context, 'В библиотеке нет подходящих упражнений — ослабьте требования к инвентарю.');
       return;
     }
+    ref.read(analyticsProvider).track('ai_plan_generated', {'source': 'offline_rules'});
     await _saveDraft(
       blocks: blocks,
       title: _goal.text.trim(),
@@ -308,6 +318,8 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       blocks: blocks,
     );
     await ref.read(repoProvider).put(Entities.sessions, s);
+    // Исходный вариант AI — чтобы измерить, насколько тренер правит план (метрика качества AI).
+    await ref.read(dbProvider).setKv('ai_original:${s.id}', jsonEncode(blocks.map(_blockSig).toList()));
     if (mounted) context.pushReplacement('/sessions/${s.id}');
   }
 
@@ -649,6 +661,7 @@ class _PlanEditor extends ConsumerWidget {
                           ? null
                           : () async {
                               await _save(ref, s.copyWith(status: 'planned'));
+                              await trackPlanSaved(ref, s);
                               if (context.mounted) showInfo(context, 'План сохранён и доступен офлайн');
                             },
                     )
@@ -914,4 +927,24 @@ class _BlockSheetState extends ConsumerState<_BlockSheet> {
       if (drill != null) DrillDetails(drill) else const Text('Опишите задание в заметке или замените блок упражнением из библиотеки.'),
     ]);
   }
+}
+
+
+String _blockSig(TrainingBlock b) => '${b.drillId ?? b.title}|${b.durationMin}|${b.phase}';
+
+/// Сколько блоков тренер изменил относительно предложения AI.
+Future<void> trackPlanSaved(WidgetRef ref, TrainingSession s) async {
+  final db = ref.read(dbProvider);
+  final raw = await db.getKv('ai_original:${s.id}');
+  final original = raw == null ? null : (jsonDecode(raw) as List).cast<String>();
+  final now = s.blocks.map(_blockSig).toList();
+  final edited = original == null
+      ? null
+      : now.where((x) => !original.contains(x)).length + original.where((x) => !now.contains(x)).length;
+  await ref.read(analyticsProvider).track('plan_saved', {
+    'ai': s.aiGenerated,
+    'blocks': s.blocks.length,
+    'edited': ?edited,
+  });
+  if (raw != null) await db.deleteKv('ai_original:${s.id}');
 }

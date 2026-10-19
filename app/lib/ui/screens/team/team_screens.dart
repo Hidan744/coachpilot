@@ -209,6 +209,7 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
       active: _active,
     );
     await ref.read(repoProvider).put(Entities.players, p);
+    if (widget.player == null) ref.read(analyticsProvider).track('player_added');
     if (!mounted) return;
     if (addAnother) {
       // Подсказка внутри формы, а не SnackBar: тот перекрывал бы кнопки панели.

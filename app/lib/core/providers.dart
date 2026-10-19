@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db.dart';
+import 'analytics.dart';
 import '../data/models.dart';
 import '../data/repo.dart';
 import '../sync/api_client.dart';
@@ -18,8 +19,15 @@ final tokenStoreProvider = Provider<TokenStore>((ref) => SecureTokenStore());
 
 final apiProvider = Provider<ApiClient>((ref) => ApiClient(baseUrl: apiUrl, tokens: ref.watch(tokenStoreProvider)));
 
+final analyticsProvider = Provider<Analytics>((ref) => Analytics(ref.watch(dbProvider), ref.watch(apiProvider)));
+
 final syncEngineProvider = Provider<SyncEngine>((ref) {
   final engine = SyncEngine(ref.watch(dbProvider), ref.watch(apiProvider));
+  final analytics = ref.watch(analyticsProvider);
+  engine.afterSync = (status) async {
+    if (status.conflicts > 0) await analytics.track('sync_conflict', {'count': status.conflicts});
+    if (status.error == null) await analytics.flush();
+  };
   ref.onDispose(engine.dispose);
   return engine;
 });
@@ -79,6 +87,7 @@ class AuthController extends Notifier<AuthState> {
     if (await _api.hasSession) {
       final cached = await _db.getKv(_profileKey);
       state = AuthState(ready: true, signedIn: true, profile: cached == null ? null : jsonDecode(cached) as Json);
+      unawaited(ref.read(analyticsProvider).track('app_open'));
       _startBackgroundSync();
       unawaited(_refreshProfile());
     } else {
@@ -99,14 +108,14 @@ class AuthController extends Notifier<AuthState> {
   Future<void> login(String email, String password) =>
       _signIn(_api.postPublic('/auth/login', {'email': email.trim(), 'password': password}));
 
-  Future<void> register(String name, String email, String password) => _signIn(_api.postPublic('/auth/register', {
+  Future<void> register(String name, String email, String password) => _signIn(signup: true, _api.postPublic('/auth/register', {
         'name': name.trim(),
         'email': email.trim(),
         'password': password,
         'consent_personal_data': true,
       }));
 
-  Future<void> _signIn(Future<dynamic> request) async {
+  Future<void> _signIn(Future<dynamic> request, {bool signup = false}) async {
     final tokens = await request as Json;
     await _api.saveTokens(tokens);
     final me = await _api.get('/me') as Json;
@@ -118,6 +127,7 @@ class AuthController extends Notifier<AuthState> {
     // Первая синхронизация до входа в приложение: на новом устройстве сразу видны данные.
     await ref.read(syncEngineProvider).sync().timeout(const Duration(seconds: 20), onTimeout: () {});
     state = AuthState(ready: true, signedIn: true, profile: me);
+    unawaited(ref.read(analyticsProvider).track(signup ? 'signup' : 'login'));
     _startBackgroundSync();
   }
 
