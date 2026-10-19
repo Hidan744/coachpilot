@@ -149,6 +149,35 @@ void main() {
       await offline.db.close();
     });
 
+    test('избранное системного упражнения у двух пользователей не конфликтует', () async {
+      final catalog = await phone.api.get('/catalog/drills') as Json;
+      final drills = (catalog['drills'] as List).cast<Json>();
+      if (drills.isEmpty) return; // каталог не загружен на тестовом сервере
+      final drillId = drills.first['id'] as String;
+
+      final other = Device(url!, MemoryTokenStore());
+      final t = await other.api.postPublic('/auth/register', {
+        'email': 'fav${Random().nextInt(1 << 32)}@test.ru',
+        'password': 'secret123',
+        'name': 'Другой',
+        'consent_personal_data': true,
+      });
+      await other.api.saveTokens(t as Json);
+      final me1 = await phone.api.get('/me') as Json;
+      final me2 = await other.api.get('/me') as Json;
+      await phone.db.setKv('user_id', me1['id'] as String);
+      await other.db.setKv('user_id', me2['id'] as String);
+
+      await phone.repo.setFavorite(drillId, true);
+      await other.repo.setFavorite(drillId, true);
+      await phone.sync.sync();
+      await other.sync.sync();
+      expect(await phone.repo.watchFailed().first, isEmpty);
+      expect(await other.repo.watchFailed().first, isEmpty);
+      expect(await other.repo.watchFavoriteDrillIds().first, {drillId});
+      await other.db.close();
+    });
+
     test('отклонённая сервером запись помечается как failed и не блокирует остальные', () async {
       await phone.repo.putJson(Entities.teams, newId(), {'name': '', 'age_group': 'U9', 'level': 'x', 'default_players': 0});
       await phone.repo.put(

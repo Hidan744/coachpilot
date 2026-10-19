@@ -38,16 +38,39 @@ const byLabel = (label) => `input[aria-label^="${label}"], textarea[aria-label^=
 export async function fill(page, label, value) {
   const el = page.locator(byLabel(label)).first();
   await el.waitFor({ state: 'attached', timeout: 15000 });
-  await el.scrollIntoViewIfNeeded().catch(() => {});
-  await el.click({ force: true });
+  await clickLoc(page, el);
   await el.fill(value, { force: true });
+}
+
+async function clickLoc(page, loc) {
+  // Элемент может быть за пределами экрана: Flutter сам не прокручивает список — крутим колесом.
+  for (let i = 0; ; i++) {
+    try {
+      await loc.click({ timeout: 2500 });
+      break;
+    } catch (e) {
+      // Видимый элемент перекрыт контейнером semantics — кликаем по координатам,
+      // Flutter сам определит, что находится под указателем.
+      if (String(e.message).includes('intercepts pointer events')) {
+        const box = await loc.boundingBox();
+        if (box && box.y + box.height / 2 > 0 && box.y + box.height / 2 < 780) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          break;
+        }
+      }
+      if (i >= 10) throw e;
+      await page.mouse.move(200, 400);
+      await page.mouse.wheel(0, i < 5 ? 250 : -350);
+      await page.waitForTimeout(300);
+    }
+  }
 }
 
 /** Клик по элементу с текстом (кнопки, плитки, вкладки). */
 export async function tap(page, text, { exact = false } = {}) {
   const loc = target(page, text, exact).last();
-  await loc.waitFor({ timeout: 15000 });
-  await loc.click();
+  await loc.waitFor({ state: 'attached', timeout: 15000 });
+  await clickLoc(page, loc);
   await page.waitForTimeout(400);
 }
 
@@ -97,4 +120,14 @@ export async function apiLogin(email) {
     pull: async () => (await (await fetch(`${API}/sync/pull?limit=1000`, { headers })).json()).records,
     push: async (changes) => (await (await fetch(`${API}/sync/push`, { method: 'POST', headers, body: JSON.stringify({ changes }) })).json()).results,
   };
+}
+
+/** Настоящие события указателя (рисование на холсте): слой semantics не перехватывает клики. */
+export async function rawPointer(page, fn) {
+  await page.evaluate(() => document.querySelectorAll('flt-semantics').forEach((e) => { e.style.pointerEvents = 'none'; }));
+  try {
+    await fn();
+  } finally {
+    await page.evaluate(() => document.querySelectorAll('flt-semantics').forEach((e) => { e.style.pointerEvents = ''; }));
+  }
 }

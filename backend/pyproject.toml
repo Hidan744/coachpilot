@@ -12,3 +12,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Контентные файлы каталога: длинные строки текста упражнений.
+"app/catalog/drills.py" = ["E501"]
+"app/catalog/schemes.py" = ["E501"]

@@ -178,5 +178,7 @@ async def test_delete_account_removes_data(client):
 
 async def test_catalog_empty_and_versioned(client):
     h, _ = await make_user(client)
-    r = (await client.get("/catalog/drills", headers=h)).json()
-    assert r == {"version": 0, "changed": False, "drills": []}
+    r = (await client.get("/catalog/drills?version=x", headers=h)).json()
+    assert r == {"version": "", "changed": True, "drills": []}
+    r = (await client.get("/catalog/drills?version=", headers=h)).json()
+    assert r["changed"] is False

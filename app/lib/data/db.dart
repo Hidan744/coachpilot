@@ -83,10 +83,10 @@ class AppDb extends _$AppDb {
 
   Future<void> deleteKv(String key) => (delete(kv)..where((t) => t.key.equals(key))).go();
 
-  /// Полная очистка при выходе из аккаунта.
+  /// Очистка данных пользователя при выходе. Системная библиотека остаётся.
   Future<void> wipe() => transaction(() async {
-        await delete(records).go();
+        await (delete(records)..where((t) => t.system.equals(false))).go();
         await delete(outbox).go();
-        await delete(kv).go();
+        await (delete(kv)..where((t) => t.key.equals('catalog_version').not())).go();
       });
 }

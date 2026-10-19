@@ -7,6 +7,7 @@ import 'core/providers.dart';
 import 'ui/screens/auth/auth_screens.dart';
 import 'ui/screens/auth/onboarding_screen.dart';
 import 'ui/screens/home/home_screen.dart';
+import 'ui/screens/library/library_screens.dart';
 import 'ui/screens/placeholder.dart';
 import 'ui/screens/profile/profile_screen.dart';
 import 'ui/screens/team/team_screens.dart';
@@ -47,7 +48,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/sessions', builder: (_, _) => const PlaceholderScreen('Тренировки'))]),
-          StatefulShellBranch(routes: [GoRoute(path: '/library', builder: (_, _) => const PlaceholderScreen('Библиотека'))]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/library', builder: (_, _) => const LibraryScreen(), routes: [
+              GoRoute(path: 'drill/:id', builder: (_, s) => DrillScreen(drillId: s.pathParameters['id']!)),
+              GoRoute(
+                path: 'edit/:id',
+                builder: (_, s) => DrillEditScreen(drillId: s.pathParameters['id'] == 'new' ? null : s.pathParameters['id']),
+              ),
+            ]),
+          ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/team', builder: (_, _) => const TeamScreen(), routes: [
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),

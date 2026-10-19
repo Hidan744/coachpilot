@@ -111,9 +111,11 @@ class Repo {
   Stream<Set<String>> watchFavoriteDrillIds() => watch(Entities.favorites, (id, j) => j['drill_id'] as String)
       .map((l) => l.toSet());
 
-  /// Избранное: id записи детерминирован, чтобы повторное добавление не плодило дубликаты.
-  Future<void> setFavorite(String drillId, bool fav) {
-    final id = _uuid.v5(Namespace.url.value, 'favorite:$drillId');
+  /// Избранное: id детерминирован по пользователю и упражнению — повторное добавление
+  /// с разных устройств сходится в одну запись, а у разных пользователей id не пересекаются.
+  Future<void> setFavorite(String drillId, bool fav) async {
+    final userId = await db.getKv('user_id') ?? 'local';
+    final id = _uuid.v5(Namespace.url.value, 'favorite:$userId:$drillId');
     return fav ? putJson(Entities.favorites, id, {'drill_id': drillId}) : remove(Entities.favorites, id);
   }
 

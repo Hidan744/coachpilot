@@ -13,6 +13,8 @@
 не пропускает изменений.
 """
 
+import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,7 +22,7 @@ from typing import Literal
 
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -212,6 +214,18 @@ async def export_all(db: AsyncSession, owner_id: uuid.UUID) -> dict[str, list[di
     return out
 
 
-async def catalog_version(db: AsyncSession) -> int:
-    v = await db.scalar(select(func.max(m.Drill.server_seq)).where(m.Drill.owner_id.is_(None)))
-    return v or 0
+async def system_catalog(db: AsyncSession) -> tuple[str, list[dict]]:
+    """Системная библиотека и её версия — хеш содержимого.
+
+    Хеш не зависит от счётчиков конкретной БД, поэтому каталог, встроенный
+    в приложение, корректно сравнивается с каталогом любого сервера."""
+    rows = await db.scalars(
+        select(m.Drill)
+        .where(m.Drill.owner_id.is_(None), m.Drill.deleted_at.is_(None))
+        .order_by(m.Drill.id)
+    )
+    drills = [to_record("drills", r).model_dump(mode="json") for r in rows]
+    digest = hashlib.sha256()
+    for d in drills:
+        digest.update(json.dumps([d["id"], d["data"]], ensure_ascii=False, sort_keys=True).encode())
+    return (digest.hexdigest()[:16] if drills else ""), drills

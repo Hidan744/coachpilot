@@ -203,20 +203,27 @@ class SyncEngine {
   // ------------------------------------------------------------------ каталог
 
   Future<void> _catalog() async {
-    final version = int.tryParse(await db.getKv(_catalogKey) ?? '') ?? 0;
-    final resp = await api.get('/catalog/drills', query: {'version': '$version'}) as Json;
+    final version = await db.getKv(_catalogKey) ?? '';
+    final resp = await api.get('/catalog/drills', query: {'version': version}) as Json;
     if (resp['changed'] != true) return;
-    await importCatalog((resp['drills'] as List).cast<Json>(), resp['version'] as int);
+    await importCatalog((resp['drills'] as List).cast<Json>(), resp['version'] as String);
   }
 
   /// Импорт системной библиотеки (с сервера или из встроенного в приложение файла).
-  Future<void> importCatalog(List<Json> drills, int version) => db.transaction(() async {
+  Future<void> importCatalog(List<Json> drills, String version) => db.transaction(() async {
         await (db.delete(db.records)..where((t) => t.system.equals(true))).go();
         for (final d in drills) {
           await _applyServerRecord(d, system: true);
         }
-        await db.setKv(_catalogKey, '$version');
+        await db.setKv(_catalogKey, version);
       });
+
+  /// Каталог, встроенный в приложение: библиотека доступна сразу после установки, без сети.
+  Future<void> ensureBundledCatalog(Future<String> Function() loadAsset) async {
+    if (await db.getKv(_catalogKey) != null) return;
+    final bundle = jsonDecode(await loadAsset()) as Json;
+    await importCatalog((bundle['drills'] as List).cast<Json>(), bundle['version'] as String);
+  }
 
   Future<LocalRecord?> _row(String entity, String id) =>
       (db.select(db.records)..where((t) => t.entity.equals(entity) & t.id.equals(id))).getSingleOrNull();
