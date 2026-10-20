@@ -44,7 +44,12 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+        // На широком экране содержимое — колонкой по центру, а не на всю ширину.
+        child: LayoutBuilder(
+          builder: (context, box) => ListView(
+              padding: EdgeInsets.fromLTRB(box.maxWidth > 792 ? (box.maxWidth - 760) / 2 : 16, 8,
+                  box.maxWidth > 792 ? (box.maxWidth - 760) / 2 : 16, 32),
+              children: [
           a(_Hero(name: auth.name, team: team, teamCount: teams.length)),
           const SizedBox(height: 12),
           if (running != null) ...[
@@ -93,6 +98,7 @@ class HomeScreen extends ConsumerWidget {
             )),
           ],
         ]),
+        ),
       ),
     );
   }
@@ -368,13 +374,16 @@ class _QuickActions extends ConsumerWidget {
       (Icons.query_stats, 'Статистика\nигроков', () => context.go('/team?tab=2')),
       (Icons.menu_book_outlined, 'Библиотека\nупражнений', () => context.go('/library')),
     ];
-    return GridView.count(
-      crossAxisCount: 3,
+    // Плитки фиксированного размера: на широком экране их больше в ряду, но они не раздуваются.
+    return GridView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.05,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 170,
+        mainAxisExtent: 108,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+      ),
       children: [
         for (var k = 0; k < items.length; k++)
           Semantics(

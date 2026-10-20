@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../data/models.dart';
 import '../data/repo.dart';
+import 'tactics.dart';
 
 const _squad = [
   ('Артём', 'Ковалёв', 'GK', 1),
@@ -131,6 +132,24 @@ Future<String> seedDemoData(Repo repo, {DateTime? now}) async {
     );
     if (!played) {
       await repo.put(Entities.matches, m);
+      // Тактика на ближайший матч: наш состав 4-4-2 против 4-3-3 соперника.
+      if (i == 5) {
+        await repo.put(
+          Entities.boards,
+          TacticBoard(
+            id: newId(),
+            teamId: team.id,
+            matchId: m.id,
+            title: 'Матч: ${m.opponent}',
+            formation: '4-4-2',
+            scheme: Scheme(field: 'full_v', items: [
+              ...formationItems('4-4-2', lineup: assignLineup('4-4-2', players)),
+              ...formationItems('4-3-3', opponent: true),
+            ]),
+            notes: 'Высокий прессинг первые 15 минут, атаки через фланги.',
+          ),
+        );
+      }
       continue;
     }
     var goalsFor = 0, goalsAgainst = rnd.nextInt(3);

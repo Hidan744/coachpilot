@@ -21,6 +21,7 @@ import 'ui/screens/team/player_profile.dart';
 import 'ui/screens/team/progress_report.dart';
 import 'ui/screens/team/team_screens.dart';
 import 'ui/theme.dart';
+import 'ui/widgets/demo_frame.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier(0);
@@ -206,5 +207,14 @@ class CoachPilotApp extends ConsumerWidget {
         supportedLocales: const [Locale('ru'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         routerConfig: ref.watch(routerProvider),
+        // В демо на компьютере приложение показывается в рамке телефона, как на мобильном.
+        builder: demoOnly ? (context, child) => DemoFrame(onOpen: (path) => _openFromShowcase(ref, path), child: child!) : null,
       );
+
+  /// Вкладки нижнего меню открываются как вкладки, остальные экраны — поверх, с кнопкой «назад».
+  static void _openFromShowcase(WidgetRef ref, String path) {
+    final router = ref.read(routerProvider);
+    const tabs = ['/', '/calendar', '/library', '/team', '/profile'];
+    tabs.contains(Uri.parse(path).path) ? router.go(path) : router.push(path);
+  }
 }
