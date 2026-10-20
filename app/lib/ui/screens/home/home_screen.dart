@@ -159,7 +159,13 @@ class _Hero extends ConsumerWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.shield_outlined, size: 16, color: Colors.white),
                     const SizedBox(width: 6),
-                    Text('${team!.name} · ${AgeGroups.label(team!.ageGroup)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    Text(
+                      // Возраст — только если его нет в названии: «Академия U16», а не «Академия U16 · U16».
+                      team!.name.contains(AgeGroups.label(team!.ageGroup))
+                          ? team!.name
+                          : '${team!.name} · ${AgeGroups.label(team!.ageGroup)}',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
                     if (teamCount > 1) const Icon(Icons.expand_more, color: Colors.white, size: 18),
                   ]),
                 ),
