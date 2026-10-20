@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -65,5 +66,16 @@ void main() {
     expect(() => readTable('old.xls', Uint8List(0)), throwsA(isA<ImportException>()));
     expect(() => readTable('x.pdf', Uint8List(0)), throwsA(isA<ImportException>()));
     expect(() => readTable('bad.docx', Uint8List.fromList([1, 2, 3])), throwsA(isA<ImportException>()));
+  });
+
+  test('xlsx с абсолютными путями внутри (Google Таблицы, openpyxl) открывается', () {
+    final bytes = File('test/fixtures/roster_absolute_paths.xlsx').readAsBytesSync();
+    final players = parsePlayers(readTable('roster.xlsx', bytes));
+    expect(players.length, 20);
+    expect(players.first.fullName, 'Артём Ковалёв');
+    expect(players.first.position, 'GK');
+    expect(players.first.number, 1);
+    expect(players.first.birthYear, 2010);
+    expect(players.every((p) => p.position != null && p.number != null), isTrue);
   });
 }

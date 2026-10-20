@@ -93,7 +93,7 @@ List<List<String>> _readText(String text) {
 List<List<String>> _readXlsx(Uint8List bytes) {
   final Excel book;
   try {
-    book = Excel.decodeBytes(bytes);
+    book = Excel.decodeBytes(_normalizeXlsx(bytes));
   } catch (_) {
     throw ImportException('Не удалось открыть файл Excel. Проверьте, что это .xlsx.');
   }
@@ -105,6 +105,28 @@ List<List<String>> _readXlsx(Uint8List bytes) {
     if (rows.isNotEmpty) return rows;
   }
   return [];
+}
+
+/// Некоторые программы (Google Таблицы, openpyxl и др.) пишут в связях книги абсолютные пути
+/// вида «/xl/worksheets/sheet1.xml», а библиотека чтения ждёт относительные — переписываем их.
+Uint8List _normalizeXlsx(Uint8List bytes) {
+  final Archive zip;
+  try {
+    zip = ZipDecoder().decodeBytes(bytes);
+  } catch (_) {
+    return bytes;
+  }
+  const relsPath = 'xl/_rels/workbook.xml.rels';
+  final rels = zip.findFile(relsPath);
+  if (rels == null) return bytes;
+  final text = utf8.decode(rels.content as List<int>);
+  if (!text.contains('Target="/xl/')) return bytes;
+  final fixed = utf8.encode(text.replaceAll('Target="/xl/', 'Target="'));
+  final out = Archive();
+  for (final f in zip.files) {
+    out.addFile(f.name == relsPath ? ArchiveFile(relsPath, fixed.length, fixed) : f);
+  }
+  return Uint8List.fromList(ZipEncoder().encode(out)!);
 }
 
 String _cellText(CellValue? v) => switch (v) {
