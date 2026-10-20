@@ -81,7 +81,13 @@ try {
 
   // 5. Тактика на матч: доска с составом, рисунок и замена.
   // Снова выбираем день матча: после загрузки календаря список дня мог перестроиться.
+  // Список календаря мог быть прокручен вниз (клик с прокруткой колесом) — возвращаемся к сетке месяца.
   await page.waitForTimeout(1500);
+  await page.mouse.move(200, 400);
+  for (let i = 0; i < 4; i++) {
+    await page.mouse.wheel(0, -1000);
+    await page.waitForTimeout(200);
+  }
   await tap(page, ruDay(monday));
   await see(page, '@ Зенит U16');
   await tap(page, '@ Зенит U16');
