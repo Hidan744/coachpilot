@@ -14,6 +14,7 @@ import '../calendar/calendar_screen.dart';
 import '../sessions/sessions_screens.dart';
 import 'performance_providers.dart';
 import 'player_development.dart';
+import 'team_dashboard.dart';
 import 'team_screens.dart';
 
 /// Сводка по игроку из всех данных; пересчитывается при любом изменении.
@@ -213,6 +214,10 @@ class _OverviewTab extends ConsumerWidget {
         }(),
     ];
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+      // Демо: у игрока своей команды ещё нет истории — предложить заполнить примером.
+      if (s.season.games == 0 && s.tests.isEmpty && s.weeks.every((w) => w.$2 == null))
+        if ((ref.watch(teamsProvider).value ?? const <Team>[]).where((t) => t.id == p.teamId).firstOrNull case final team?)
+          DemoFillCard(team: team),
       // Плитки фиксированной высоты: на планшете — 4 в ряд.
       GridView(
         shrinkWrap: true,
@@ -755,8 +760,10 @@ class PlayerStatsTab extends ConsumerWidget {
     final list = rows.toList()..sort((a, b) => (matches[b.matchId]?.startsAt ?? DateTime(2000)).compareTo(matches[a.matchId]?.startsAt ?? DateTime(2000)));
     final keeper = s.player.position == 'GK';
     if (st.games == 0) {
-      return ListView(padding: const EdgeInsets.all(16), children: const [
-        EmptyState(
+      final team = (ref.watch(teamsProvider).value ?? const <Team>[]).where((t) => t.id == s.player.teamId).firstOrNull;
+      return ListView(padding: const EdgeInsets.all(16), children: [
+        if (team != null) DemoFillCard(team: team),
+        const EmptyState(
           icon: Icons.query_stats,
           title: 'Статистики пока нет',
           text: 'Откройте матч в календаре → «Статистика матча»: минуты, голы, передачи, отборы, карточки и оценка. '
@@ -765,6 +772,22 @@ class PlayerStatsTab extends ConsumerWidget {
       ]);
     }
     String f1(double? v) => v == null ? '—' : v.toStringAsFixed(1);
+
+    // Команда для сравнения: все игроки команды этого игрока.
+    final teamIds = {for (final p in ref.watch(playersProvider(s.player.teamId)).value ?? const <Player>[]) p.id};
+    final allRows = (ref.watch(matchStatsProvider).value ?? const <MatchStat>[]).where((r) => teamIds.contains(r.playerId)).toList();
+    final team = seasonStats(allRows);
+    final outfield = {for (final p in ref.watch(playersProvider(s.player.teamId)).value ?? const <Player>[]) if (p.position != 'GK') p.id};
+    final profile = keeper ? null : gameProfile(st, [for (final e in team.entries) if (outfield.contains(e.key)) e.value]);
+    final sw = profile == null ? null : strengthsAndWeaknesses(profile);
+
+    // Форма: оценка по матчам и средняя оценка команды в тех же матчах.
+    final chrono = list.reversed.toList();
+    double? teamAvg(String matchId) {
+      final r = [for (final x in allRows) if (x.matchId == matchId && x.rating != null && x.minutes > 0) x.rating!];
+      return r.isEmpty ? null : r.reduce((a, b) => a + b) / r.length;
+    }
+
     final tiles = <(String, String)>[
       ('Матчи', '${st.games}'),
       ('В старте', '${st.starts}'),
@@ -774,6 +797,10 @@ class PlayerStatsTab extends ConsumerWidget {
       ('Ср. оценка', f1(st.avgRating)),
       ('Точность передач', st.passAccuracy == null ? '—' : '${st.passAccuracy!.round()}%'),
       ('Удары в створ', st.shotAccuracy == null ? '—' : '${st.shotAccuracy!.round()}%'),
+      if (st.duelRate != null) ('Единоборства', '${st.duelRate!.round()}%'),
+      if (st['distance'] > 0) ('Км за 90 мин', st.per90('distance').toStringAsFixed(1)),
+      if (st['sprints'] > 0) ('Спринты за 90', st.per90('sprints').toStringAsFixed(1)),
+      if (st['top_speed'] > 0) ('Макс. скорость', '${st['top_speed'].toStringAsFixed(1)} км/ч'),
     ];
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
       GridView(
@@ -797,6 +824,62 @@ class PlayerStatsTab extends ConsumerWidget {
             ),
         ],
       ),
+      if (chrono.any((r) => r.rating != null)) ...[
+        const SizedBox(height: 12),
+        DashCard(
+          title: 'Форма по матчам',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Оценка за матч и средняя по команде. Нажмите на точку.', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            LineChart(
+              xLabels: [
+                for (final r in chrono)
+                  matches[r.matchId] == null ? '—' : DateFormat('d.MM').format(matches[r.matchId]!.startsAt),
+              ],
+              series: [
+                LineSeries(s.player.firstName, AppColors.red, [for (final r in chrono) r.rating]),
+                LineSeries('Команда', chartGrey, [for (final r in chrono) teamAvg(r.matchId)]),
+              ],
+              minY: 4,
+              maxY: 10,
+            ),
+          ]),
+        ),
+      ],
+      if (profile != null && profile.values.whereType<int>().length >= 3) ...[
+        const SizedBox(height: 12),
+        DashCard(
+          title: 'Игровой профиль',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Место среди полевых игроков команды: 100 — лучший, 50 — середина.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            RadarChart(
+              labels: [for (final a in gameAxes) if (profile[a.label] != null) a.label],
+              values: [for (final a in gameAxes) if (profile[a.label] != null) profile[a.label]],
+              compare: [for (final a in gameAxes) if (profile[a.label] != null) 50],
+              size: 260,
+            ),
+            const Text('Серым — средний уровень команды', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ]),
+        ),
+      ],
+      if (sw != null && (sw.strong.isNotEmpty || sw.weak.isNotEmpty)) ...[
+        const SizedBox(height: 12),
+        DashCard(
+          title: 'Вывод тренера',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (sw.strong.isNotEmpty) ...[
+              const Text('Сильные стороны', style: TextStyle(color: AppColors.good, fontWeight: FontWeight.w700)),
+              for (final (label, text) in sw.strong) _Insight(icon: Icons.trending_up, color: AppColors.good, title: label, text: text),
+              const SizedBox(height: 8),
+            ],
+            if (sw.weak.isNotEmpty) ...[
+              const Text('Над чем работать', style: TextStyle(color: AppColors.warn, fontWeight: FontWeight.w700)),
+              for (final (label, text) in sw.weak) _Insight(icon: Icons.build_circle_outlined, color: AppColors.warn, title: label, text: text),
+            ],
+          ]),
+        ),
+      ],
       const SizedBox(height: 12),
       DashCard(
         title: 'Сезон: всего и за 90 минут',
@@ -814,11 +897,12 @@ class PlayerStatsTab extends ConsumerWidget {
                   Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(k.label)),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Text(_num(st[k.key]), textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(k.format(st[k.key]), textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Text(st.per90(k.key).toStringAsFixed(2), textAlign: TextAlign.right, style: const TextStyle(color: AppColors.textMuted)),
+                    child: Text(k.max ? '—' : st.per90(k.key).toStringAsFixed(2),
+                        textAlign: TextAlign.right, style: const TextStyle(color: AppColors.textMuted)),
                   ),
                 ]),
           ],
@@ -847,4 +931,28 @@ class PlayerStatsTab extends ConsumerWidget {
       ),
     ]);
   }
+}
+
+/// Строка вывода: направление игры и пояснение.
+class _Insight extends StatelessWidget {
+  const _Insight({required this.icon, required this.color, required this.title, required this.text});
+
+  final IconData icon;
+  final Color color;
+  final String title, text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: '$title. ', style: const TextStyle(fontWeight: FontWeight.w700)),
+              TextSpan(text: text),
+            ])),
+          ),
+        ]),
+      );
 }

@@ -35,11 +35,12 @@ class _AuthScaffold extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  AppBrand.clubName.toUpperCase(),
-                  textAlign: TextAlign.center,
-                  style: t.textTheme.labelLarge?.copyWith(color: t.colorScheme.primary, letterSpacing: 2),
-                ),
+                if (AppBrand.clubName.isNotEmpty)
+                  Text(
+                    AppBrand.clubName.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    style: t.textTheme.labelLarge?.copyWith(color: t.colorScheme.primary, letterSpacing: 2),
+                  ),
                 Text(
                   AppBrand.appName.toUpperCase(),
                   textAlign: TextAlign.center,

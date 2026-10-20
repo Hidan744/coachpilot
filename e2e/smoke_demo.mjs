@@ -69,6 +69,18 @@ try {
   await see(page, 'Больше сна перед игрой');
   await shot(page, 'demo-parents');
   step('календарь, доска и текст для родителей в демо');
+
+  // Своя команда в демо: одна кнопка — и вся аналитика на своих игроках.
+  await page.keyboard.press('Escape');
+  await go(page, '/team?tab=1');
+  await tap(page, 'Заполнить демо-данными');
+  await see(page, 'Готово: история сезона');
+  await go(page, '/team?tab=2');
+  await see(page, 'Сезон: матчей сыграно 8');
+  await tap(page, 'Физика');
+  await see(page, 'Км/90');
+  await shot(page, 'demo-own-team-stats');
+  step('своя команда заполнена демо-данными: статистика и дашборд');
   console.log('DEMO E2E: OK');
 } catch (e) {
   await shot(page, 'failure');

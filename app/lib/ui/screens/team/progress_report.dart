@@ -64,7 +64,7 @@ class _ProgressReportScreenState extends ConsumerState<ProgressReportScreen> {
         await saveFile(png, '${_fileBase(p)}.png', 'image/png');
       } else {
         final img = await decodeImageFromList(png);
-        final doc = pw.Document(title: 'Отчёт о прогрессе: ${p.fullName}', author: AppBrand.clubName);
+        final doc = pw.Document(title: 'Отчёт о прогрессе: ${p.fullName}', author: AppBrand.label);
         const width = 595.0;
         doc.addPage(pw.Page(
           pageFormat: PdfPageFormat(width, width * img.height / img.width),
@@ -187,7 +187,7 @@ class ProgressReportView extends StatelessWidget {
           child: Row(children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${AppBrand.clubName.toUpperCase()} · ОТЧЁТ О ПРОГРЕССЕ',
+                Text('${AppBrand.label.toUpperCase()} · ОТЧЁТ О ПРОГРЕССЕ',
                     style: const TextStyle(fontSize: 11, letterSpacing: 1.5, color: Colors.white70)),
                 const SizedBox(height: 6),
                 Text(p.fullName.toUpperCase(),
@@ -329,7 +329,7 @@ class ProgressReportView extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          'CoachPilot · ${AppBrand.clubName}${team == null ? '' : ' · ${team!.name}'}',
+          '${AppBrand.label}${team == null ? '' : ' · ${team!.name}'}',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
         ),

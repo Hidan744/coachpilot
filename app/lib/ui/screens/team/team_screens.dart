@@ -88,6 +88,8 @@ class TeamScreen extends ConsumerWidget {
                 switch (v) {
                   case 'excel':
                     exportTeamExcel(context, ref, team);
+                  case 'demo':
+                    fillTeamWithDemo(context, ref, team);
                   case 'import':
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImportPlayersScreen(teamId: team.id)));
                   case 'edit':
@@ -105,12 +107,13 @@ class TeamScreen extends ConsumerWidget {
                     }
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'import', child: Text('Импорт игроков (Excel, Word)')),
-                PopupMenuItem(value: 'excel', child: Text('Выгрузить отчёт в Excel')),
-                PopupMenuItem(value: 'edit', child: Text('Изменить команду')),
-                PopupMenuItem(value: 'new', child: Text('Новая команда')),
-                PopupMenuItem(value: 'delete', child: Text('Удалить команду')),
+              itemBuilder: (_) => [
+                if (ref.read(authProvider).demo) const PopupMenuItem(value: 'demo', child: Text('Заполнить демо-данными')),
+                const PopupMenuItem(value: 'import', child: Text('Импорт игроков (Excel, Word)')),
+                const PopupMenuItem(value: 'excel', child: Text('Выгрузить отчёт в Excel')),
+                const PopupMenuItem(value: 'edit', child: Text('Изменить команду')),
+                const PopupMenuItem(value: 'new', child: Text('Новая команда')),
+                const PopupMenuItem(value: 'delete', child: Text('Удалить команду')),
               ],
             ),
             const SyncBadge(),

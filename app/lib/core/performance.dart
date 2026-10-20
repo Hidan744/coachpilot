@@ -7,7 +7,8 @@ import '../data/models.dart';
 // ---------------------------------------------------------------- статистика матчей
 
 class StatKey {
-  const StatKey(this.key, this.label, this.short, {this.keeper = false, this.basic = false});
+  const StatKey(this.key, this.label, this.short,
+      {this.keeper = false, this.basic = false, this.step = 1, this.max = false, this.group = 'attack'});
 
   final String key, label, short;
 
@@ -16,6 +17,18 @@ class StatKey {
 
   /// Показывать сразу (остальное — в «Ещё»).
   final bool basic;
+
+  /// Шаг ввода: 1 для счётчиков, 0.1 для километров.
+  final double step;
+
+  /// За сезон берётся максимум, а не сумма (максимальная скорость).
+  final bool max;
+
+  /// Группа для таблиц и анализа: attack, passing, defence, physical, discipline, keeper.
+  final String group;
+
+  /// Значение для показа: целое для счётчиков, с десятыми для км и скорости.
+  String format(double v) => step < 1 || max ? v.toStringAsFixed(1) : v.round().toString();
 }
 
 /// Основные показатели, на которые смотрят в профессиональном футболе.
@@ -24,19 +37,28 @@ const statKeys = [
   StatKey('assists', 'Голевые передачи', 'П', basic: true),
   StatKey('shots', 'Удары', 'Уд', basic: true),
   StatKey('shots_on', 'Удары в створ', 'УдС', basic: true),
-  StatKey('passes', 'Передачи', 'Пер'),
-  StatKey('passes_ok', 'Точные передачи', 'ТП'),
-  StatKey('key_passes', 'Ключевые передачи', 'КП'),
   StatKey('dribbles', 'Удачные обводки', 'Обв'),
-  StatKey('tackles', 'Отборы', 'Отб', basic: true),
-  StatKey('interceptions', 'Перехваты', 'Пхв'),
-  StatKey('duels_won', 'Выигранные единоборства', 'Ед'),
-  StatKey('fouls', 'Фолы', 'Ф'),
-  StatKey('yellow', 'Жёлтые карточки', 'ЖК', basic: true),
-  StatKey('red', 'Красные карточки', 'КК', basic: true),
-  StatKey('saves', 'Сейвы', 'Сейв', keeper: true, basic: true),
-  StatKey('conceded', 'Пропущено', 'Проп', keeper: true, basic: true),
+  StatKey('passes', 'Передачи', 'Пер', group: 'passing'),
+  StatKey('passes_ok', 'Точные передачи', 'ТП', group: 'passing'),
+  StatKey('key_passes', 'Ключевые передачи', 'КП', group: 'passing'),
+  StatKey('crosses', 'Навесы', 'Нав', group: 'passing'),
+  StatKey('tackles', 'Отборы', 'Отб', basic: true, group: 'defence'),
+  StatKey('interceptions', 'Перехваты', 'Пхв', group: 'defence'),
+  StatKey('recoveries', 'Подборы', 'Под', group: 'defence'),
+  StatKey('duels', 'Единоборства', 'Ед', group: 'defence'),
+  StatKey('duels_won', 'Выигранные единоборства', 'ЕдВ', group: 'defence'),
+  StatKey('losses', 'Потери', 'Пот', group: 'defence'),
+  StatKey('distance', 'Дистанция, км', 'Км', step: 0.1, group: 'physical'),
+  StatKey('sprints', 'Спринты', 'Спр', group: 'physical'),
+  StatKey('top_speed', 'Макс. скорость, км/ч', 'Скор', step: 0.5, max: true, group: 'physical'),
+  StatKey('fouls', 'Фолы', 'Ф', group: 'discipline'),
+  StatKey('yellow', 'Жёлтые карточки', 'ЖК', basic: true, group: 'discipline'),
+  StatKey('red', 'Красные карточки', 'КК', basic: true, group: 'discipline'),
+  StatKey('saves', 'Сейвы', 'Сейв', keeper: true, basic: true, group: 'keeper'),
+  StatKey('conceded', 'Пропущено', 'Проп', keeper: true, basic: true, group: 'keeper'),
 ];
+
+final statByKey = {for (final s in statKeys) s.key: s};
 
 final statLabels = {for (final s in statKeys) s.key: s.label};
 
@@ -50,7 +72,8 @@ class SeasonStats {
       minutes += r.minutes;
       if (r.rating != null) ratings.add(r.rating!);
       for (final e in r.stats.entries) {
-        totals[e.key] = (totals[e.key] ?? 0) + e.value;
+        final max = statByKey[e.key]?.max ?? false;
+        totals[e.key] = max ? math.max(totals[e.key] ?? 0, e.value) : (totals[e.key] ?? 0) + e.value;
       }
       if (r['conceded'] == 0 && r.minutes >= 60 && (r.stats.containsKey('saves') || r.stats.isEmpty)) cleanSheets++;
     }
@@ -73,8 +96,66 @@ class SeasonStats {
   /// Удары в створ, %.
   double? get shotAccuracy => this['shots'] == 0 ? null : this['shots_on'] * 100 / this['shots'];
 
-  /// Показатель за 90 минут.
-  double per90(String key) => minutes == 0 ? 0 : this[key] * 90 / minutes;
+  /// Выигранные единоборства, %.
+  double? get duelRate => this['duels'] == 0 ? null : this['duels_won'] * 100 / this['duels'];
+
+  /// Показатель за 90 минут (для максимальной скорости — сам максимум).
+  double per90(String key) => (statByKey[key]?.max ?? false) ? this[key] : (minutes == 0 ? 0 : this[key] * 90 / minutes);
+}
+
+// ---------------------------------------------------------------- игровой профиль
+
+/// Направление игры для анализа: как считается и как объясняется.
+class GameAxis {
+  const GameAxis(this.label, this.value, this.strong, this.weak);
+
+  final String label;
+
+  /// Значение игрока (больше — лучше); null — данных нет.
+  final double? Function(SeasonStats s) value;
+  final String strong, weak;
+}
+
+/// Направления игрового профиля полевого игрока — просто и как в профессиональной аналитике.
+final gameAxes = [
+  GameAxis('Атака', (s) => s.per90('goals') * 3 + s.per90('shots_on'), 'Опасен у ворот: забивает и бьёт в створ',
+      'Мало ударов в створ — больше завершений на тренировках'),
+  GameAxis('Созидание', (s) => s.per90('assists') * 3 + s.per90('key_passes'), 'Создаёт моменты партнёрам',
+      'Редко отдаёт обостряющие передачи'),
+  GameAxis('Передачи', (s) => s.passAccuracy, 'Точно распределяет мяч', 'Много неточных передач — работа над первым касанием и обзором'),
+  GameAxis('Дриблинг', (s) => s.per90('dribbles'), 'Обыгрывает один в один', 'Редко идёт в обводку'),
+  GameAxis('Единоборства', (s) => s.duelRate, 'Выигрывает борьбу за мяч', 'Проигрывает единоборства — силовая и стартовая работа'),
+  GameAxis('Оборона', (s) => s.per90('tackles') + s.per90('interceptions') + s.per90('recoveries'), 'Активен в отборе и перехватах',
+      'Мало действий в обороне'),
+  GameAxis('Надёжность', (s) => s.minutes == 0 ? null : -s.per90('losses'), 'Бережёт мяч, мало потерь', 'Много потерь мяча'),
+  GameAxis('Физика', (s) => s['distance'] == 0 ? null : s.per90('distance') + s.per90('sprints') * 0.2, 'Много бегает и ускоряется',
+      'Объём беговой работы ниже команды'),
+];
+
+/// Профиль игрока: место среди полевых игроков команды по каждому направлению, 0–100 (100 — лучший).
+/// Учитываются игроки, сыгравшие не меньше 90 минут.
+Map<String, int?> gameProfile(SeasonStats player, Iterable<SeasonStats> team) {
+  final peers = [for (final t in team) if (t.minutes >= 90) t];
+  return {
+    for (final a in gameAxes)
+      a.label: () {
+        final mine = a.value(player);
+        if (mine == null) return null;
+        final vals = [for (final t in peers) ?a.value(t)];
+        if (vals.length < 2) return 50;
+        final below = vals.where((v) => v < mine).length, equal = vals.where((v) => v == mine).length;
+        return ((below + equal / 2) * 100 / vals.length).round().clamp(0, 100);
+      }(),
+  };
+}
+
+/// Сильные и слабые стороны: два лучших и два худших направления с подсказками.
+({List<(String, String)> strong, List<(String, String)> weak}) strengthsAndWeaknesses(Map<String, int?> profile) {
+  final known = [for (final a in gameAxes) if (profile[a.label] != null) (a, profile[a.label]!)]..sort((x, y) => y.$2.compareTo(x.$2));
+  return (
+    strong: [for (final (a, v) in known.take(2)) if (v >= 55) (a.label, a.strong)],
+    weak: [for (final (a, v) in known.reversed.take(2)) if (v <= 45) (a.label, a.weak)],
+  );
 }
 
 /// Итоги всех игроков по строкам статистики.

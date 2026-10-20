@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/demo_data.dart';
 import '../../../core/export/excel_report.dart';
 import '../../../core/export/save_file.dart';
 import '../../../core/performance.dart';
@@ -38,6 +39,52 @@ Future<void> exportTeamExcel(BuildContext context, WidgetRef ref, Team team) asy
     ref.read(analyticsProvider).track('excel_exported');
   } catch (_) {
     if (context.mounted) showInfo(context, 'Не удалось сформировать отчёт');
+  }
+}
+
+/// Демо: заполнить свою команду примером истории — тренировки, посещаемость, матчи со статистикой,
+/// тесты ОФП, оценки, программы развития. Чтобы сразу увидеть аналитику на своих игроках.
+Future<void> fillTeamWithDemo(BuildContext context, WidgetRef ref, Team team) async {
+  final repo = ref.read(repoProvider);
+  final players = (await repo.list(Entities.players, Player.fromJson, parentId: team.id)).where((p) => p.active).toList();
+  if (players.isEmpty) {
+    if (context.mounted) showInfo(context, 'Сначала добавьте игроков в состав');
+    return;
+  }
+  await ref.read(dbProvider).transaction(() => seedTeamHistory(repo, team, players, seed: team.id.hashCode));
+  if (context.mounted) showInfo(context, 'Готово: история сезона для ${players.length} игроков');
+}
+
+/// Плашка демо: своя команда без истории — предложить заполнить примером.
+class DemoFillCard extends ConsumerWidget {
+  const DemoFillCard({super.key, required this.team});
+
+  final Team team;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(authProvider).demo) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: cardDecoration(accent: true),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Демо: покажем аналитику на ваших игроках',
+            style: TextStyle(fontFamily: AppTheme.display, fontSize: 18, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        const Text(
+          'Заполним команду примером сезона: тренировки и посещаемость, матчи со статистикой как в профи '
+          '(удары, передачи, единоборства, дистанция, спринты), тесты ОФП, оценки и планы развития.',
+          style: TextStyle(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: () => fillTeamWithDemo(context, ref, team),
+          icon: const Icon(Icons.auto_awesome),
+          label: const Text('Заполнить демо-данными'),
+        ),
+      ]),
+    );
   }
 }
 
@@ -244,6 +291,7 @@ class TeamDashboard extends ConsumerWidget {
       var i = 0;
       Widget a(Widget w) => Appear(index: i++, child: w);
       final rows = <Widget>[
+        if (played.isEmpty) DemoFillCard(team: team),
         a(GridView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -542,36 +590,64 @@ class TeamStatsTable extends ConsumerStatefulWidget {
 }
 
 class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
+  String _group = 'main';
   String _sort = 'goals';
 
-  static const _cols = [
-    ('games', 'И'),
-    ('minutes', 'Мин'),
-    ('goals', 'Г'),
-    ('assists', 'П'),
-    ('ga', 'Г+П'),
-    ('shots', 'Уд'),
-    ('pass', 'Пер%'),
-    ('tackles', 'Отб'),
-    ('yellow', 'ЖК'),
-    ('red', 'КК'),
-    ('rating', 'Оц'),
-  ];
+  static String _int(double v) => v.round().toString();
+  static String _f1(double v) => v.toStringAsFixed(1);
+  static String _pct(double v) => v < 0 ? '—' : '${v.round()}';
 
-  double _value(SeasonStats s, String k) => switch (k) {
-        'games' => s.games.toDouble(),
-        'minutes' => s.minutes.toDouble(),
-        'ga' => s.goalContributions.toDouble(),
-        'pass' => s.passAccuracy ?? -1,
-        'rating' => s.avgRating ?? -1,
-        _ => s[k],
-      };
+  /// Колонка: ключ сортировки, заголовок, значение и вид.
+  static final _groups = <String, (String, List<(String, String, double Function(SeasonStats), String Function(double))>)>{
+    'main': ('Основное', [
+      ('games', 'И', (s) => s.games.toDouble(), _int),
+      ('minutes', 'Мин', (s) => s.minutes.toDouble(), _int),
+      ('goals', 'Г', (s) => s['goals'], _int),
+      ('assists', 'П', (s) => s['assists'], _int),
+      ('ga', 'Г+П', (s) => s.goalContributions.toDouble(), _int),
+      ('pass', 'Пер%', (s) => s.passAccuracy ?? -1, _pct),
+      ('yellow', 'ЖК', (s) => s['yellow'], _int),
+      ('rating', 'Оц', (s) => s.avgRating ?? -1, (v) => v < 0 ? '—' : _f1(v)),
+    ]),
+    'attack': ('Атака', [
+      ('goals', 'Г', (s) => s['goals'], _int),
+      ('shots', 'Уд', (s) => s['shots'], _int),
+      ('shots_on', 'УдС', (s) => s['shots_on'], _int),
+      ('shot_acc', 'Створ%', (s) => s.shotAccuracy ?? -1, _pct),
+      ('goals90', 'Г/90', (s) => s.per90('goals'), (v) => v.toStringAsFixed(2)),
+      ('dribbles', 'Обв', (s) => s['dribbles'], _int),
+    ]),
+    'passing': ('Передачи', [
+      ('passes', 'Пер', (s) => s['passes'], _int),
+      ('pass', 'Точн%', (s) => s.passAccuracy ?? -1, _pct),
+      ('key_passes', 'КП', (s) => s['key_passes'], _int),
+      ('assists', 'ГП', (s) => s['assists'], _int),
+      ('crosses', 'Нав', (s) => s['crosses'], _int),
+    ]),
+    'defence': ('Оборона', [
+      ('tackles', 'Отб', (s) => s['tackles'], _int),
+      ('interceptions', 'Пхв', (s) => s['interceptions'], _int),
+      ('recoveries', 'Под', (s) => s['recoveries'], _int),
+      ('duel', 'Ед%', (s) => s.duelRate ?? -1, _pct),
+      ('losses', 'Пот', (s) => s['losses'], _int),
+      ('fouls', 'Ф', (s) => s['fouls'], _int),
+    ]),
+    'physical': ('Физика', [
+      ('distance', 'Км', (s) => s['distance'], _f1),
+      ('distance90', 'Км/90', (s) => s.per90('distance'), _f1),
+      ('sprints', 'Спр', (s) => s['sprints'], _int),
+      ('sprints90', 'Спр/90', (s) => s.per90('sprints'), _f1),
+      ('top_speed', 'Скор', (s) => s['top_speed'], _f1),
+    ]),
+  };
 
-  String _fmt(SeasonStats s, String k) => switch (k) {
-        'pass' => s.passAccuracy == null ? '—' : '${s.passAccuracy!.round()}',
-        'rating' => s.avgRating == null ? '—' : s.avgRating!.toStringAsFixed(1),
-        _ => _value(s, k).round().toString(),
-      };
+  static const _legend = {
+    'main': 'И — игры, Г — голы, П — голевые передачи, Пер% — точность передач, Оц — средняя оценка.',
+    'attack': 'Уд — удары, УдС — в створ, Створ% — доля ударов в створ, Г/90 — голы за 90 минут, Обв — удачные обводки.',
+    'passing': 'Пер — передачи, Точн% — точность, КП — ключевые (после них удар), ГП — голевые, Нав — навесы.',
+    'defence': 'Отб — отборы, Пхв — перехваты, Под — подборы, Ед% — выигранные единоборства, Пот — потери, Ф — фолы.',
+    'physical': 'Км — дистанция за сезон, Км/90 — за полный матч, Спр — спринты, Скор — максимальная скорость, км/ч.',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -579,10 +655,14 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
     final matches = (ref.watch(matchesProvider).value ?? const <Match>[]).where((m) => m.teamId == widget.team.id).toList();
     final matchIds = {for (final m in matches) m.id};
     final season = seasonStats((ref.watch(matchStatsProvider).value ?? const <MatchStat>[]).where((s) => matchIds.contains(s.matchId)));
+    final cols = _groups[_group]!.$2;
+    if (!cols.any((c) => c.$1 == _sort)) _sort = cols.first.$1;
+    final sortBy = cols.firstWhere((c) => c.$1 == _sort).$3;
     final rows = [for (final p in players) if (season[p.id] != null && season[p.id]!.games > 0) (p, season[p.id]!)]
-      ..sort((a, b) => _value(b.$2, _sort).compareTo(_value(a.$2, _sort)));
+      ..sort((a, b) => sortBy(b.$2).compareTo(sortBy(a.$2)));
     if (rows.isEmpty) {
       return ListView(padding: const EdgeInsets.all(16), children: [
+        DemoFillCard(team: widget.team),
         const EmptyState(
           icon: Icons.query_stats,
           title: 'Статистики пока нет',
@@ -604,6 +684,22 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
             style: const TextStyle(color: AppColors.textMuted)),
       ),
       const SizedBox(height: 8),
+      // Группы показателей — как вкладки в профессиональной аналитике.
+      SizedBox(
+        height: 40,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+          for (final e in _groups.entries)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(e.value.$1),
+                selected: _group == e.key,
+                onSelected: (_) => setState(() => _group = e.key),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 4),
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
@@ -615,7 +711,7 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
           dataRowMaxHeight: 44,
           columns: [
             const DataColumn(label: Text('Игрок')),
-            for (final (k, label) in _cols)
+            for (final (k, label, _, _) in cols)
               DataColumn(
                 numeric: true,
                 label: Text(label, style: TextStyle(color: _sort == k ? AppColors.red : null, fontWeight: FontWeight.w700)),
@@ -629,17 +725,16 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
                 cells: [
                   DataCell(Text(p.lastName.isEmpty ? p.firstName : '${p.lastName} ${p.firstName.characters.first}.',
                       style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
-                  for (final (k, _) in _cols) DataCell(Text(_fmt(s, k))),
+                  for (final (_, _, value, fmt) in cols) DataCell(Text(fmt(value(s)))),
                 ],
               ),
           ],
         ),
       ),
       const SizedBox(height: 8),
-      const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8),
-        child: Text('И — игры, Г — голы, П — голевые передачи, Уд — удары, Пер% — точность передач, Отб — отборы, Оц — средняя оценка.',
-            style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Text(_legend[_group]!, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ),
     ]);
   }

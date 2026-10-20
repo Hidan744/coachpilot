@@ -123,12 +123,17 @@ class _PlayerStatCardState extends ConsumerState<_PlayerStatCard> {
 
   void _bump(String key, int d) {
     final s = _s;
-    final next = {...s.stats, key: (s[key] + d).clamp(0, 999).toDouble()};
+    final k = statByKey[key];
+    final step = k?.step ?? 1;
+    // Скорость начинаем с типичного значения, а не с нуля.
+    final base = k?.max == true && s[key] == 0 && d > 0 ? 24.0 : s[key] + d * step;
+    final next = {...s.stats, key: (double.parse(base.toStringAsFixed(1))).clamp(0, 999).toDouble()};
     // Гол — это удар в створ, удар в створ — удар; точных передач не больше, чем передач.
     double v(String k) => next[k] ?? 0;
     if (v('shots_on') < v('goals')) next['shots_on'] = v('goals');
     if (v('shots') < v('shots_on')) next['shots'] = v('shots_on');
     if (v('passes') < v('passes_ok')) next['passes'] = v('passes_ok');
+    if (v('duels') < v('duels_won')) next['duels'] = v('duels_won');
     _put(s.copyWith(stats: next));
   }
 
@@ -172,7 +177,7 @@ class _PlayerStatCardState extends ConsumerState<_PlayerStatCard> {
               IconButton(tooltip: 'Больше минут', onPressed: () => _put(s.copyWith(minutes: (s.minutes + 5).clamp(1, 150))), icon: const Icon(Icons.add)),
             ]),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final k in keys) _Counter(label: k.label, value: s[k.key].round(), onChange: (d) => _bump(k.key, d)),
+              for (final k in keys) _Counter(label: k.label, value: k.format(s[k.key]), canDecrease: s[k.key] > 0, onChange: (d) => _bump(k.key, d)),
             ]),
             const SizedBox(height: 6),
             Row(children: [
@@ -193,7 +198,7 @@ class _PlayerStatCardState extends ConsumerState<_PlayerStatCard> {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => setState(() => _more = !_more),
-                child: Text(_more ? 'Только основное' : 'Ещё показатели: передачи, перехваты, единоборства…'),
+                child: Text(_more ? 'Только основное' : 'Ещё показатели: передачи, единоборства, подборы, дистанция, спринты…'),
               ),
             ),
           ],
@@ -204,10 +209,10 @@ class _PlayerStatCardState extends ConsumerState<_PlayerStatCard> {
 }
 
 class _Counter extends StatelessWidget {
-  const _Counter({required this.label, required this.value, required this.onChange});
+  const _Counter({required this.label, required this.value, required this.canDecrease, required this.onChange});
 
-  final String label;
-  final int value;
+  final String label, value;
+  final bool canDecrease;
   final ValueChanged<int> onChange;
 
   @override
@@ -219,10 +224,10 @@ class _Counter extends StatelessWidget {
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: '$label: меньше',
-            onPressed: value > 0 ? () => onChange(-1) : null,
+            onPressed: canDecrease ? () => onChange(-1) : null,
             icon: const Icon(Icons.remove, size: 18),
           ),
-          Text('$value', style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: '$label: больше',

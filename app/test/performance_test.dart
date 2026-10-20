@@ -191,7 +191,16 @@ void main() {
     );
     expect(snap.overallNow, isNotNull);
     expect(snap.physicalNow, greaterThanOrEqualTo(snap.physicalBefore!));
-    expect(snap.season.games, 5);
+    expect(snap.season.games, 8);
+    // Профессиональные показатели: дистанция, спринты, скорость (максимум, а не сумма), единоборства.
+    expect(snap.season['distance'], greaterThan(30));
+    expect(snap.season['top_speed'], inInclusiveRange(24, 33));
+    expect(snap.season.duelRate, isNotNull);
+    // Игровой профиль относительно команды и выводы.
+    final squad = seasonStats(stats);
+    final profile = gameProfile(snap.season, squad.values);
+    expect(profile['Атака'], inInclusiveRange(0, 100));
+    expect(profile.values.whereType<int>().length, gameAxes.length);
     expect(snap.attendancePct, greaterThan(70));
 
     final team = (await repo.list(Entities.teams, Team.fromJson)).single;
@@ -218,5 +227,27 @@ void main() {
   test('имя файла латиницей', () {
     expect(safeFileName('Отчёт Лев Степанов 20.10.2026.pdf'), 'Otchet_Lev_Stepanov_20.10.2026.pdf');
     expect(safeFileName('Отчёт Амкар U16 (сезон).xlsx'), 'Otchet_Amkar_U16_sezon.xlsx');
+  });
+
+  test('демо-история для своей команды без позиций', () async {
+    final db = AppDb(NativeDatabase.memory());
+    addTearDown(db.close);
+    final repo = Repo(db);
+    final team = Team(id: newId(), name: 'Моя команда', ageGroup: 'U12', level: 'beginner', defaultPlayers: 12, fieldType: 'half');
+    await repo.put(Entities.teams, team);
+    final players = [
+      for (var i = 0; i < 9; i++) Player(id: newId(), teamId: team.id, firstName: 'Игрок$i', lastName: ''),
+    ];
+    for (final p in players) {
+      await repo.put(Entities.players, p);
+    }
+    await db.transaction(() => seedTeamHistory(repo, team, players, now: DateTime(2026, 10, 20)));
+    final stats = await repo.list(Entities.matchStats, MatchStat.fromJson);
+    final matches = await repo.list(Entities.matches, Match.fromJson);
+    expect(matches.where((m) => m.status == 'played').length, 8);
+    expect(matches.first.opponent, endsWith('U12'));
+    // Все 9 игроков сыграли: состав добран без позиций.
+    expect(seasonStats(stats).length, 9);
+    expect(await repo.list(Entities.devPlans, DevelopmentPlan.fromJson), isNotEmpty);
   });
 }

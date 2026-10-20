@@ -41,7 +41,7 @@ class _ImportMatchesScreenState extends ConsumerState<ImportMatchesScreen> {
   List<String> get _ownNames {
     final team = (ref.read(teamsProvider).value ?? const <Team>[]).where((t) => t.id == _teamId).firstOrNull;
     return [
-      AppBrand.clubName.replaceFirst(RegExp(r'^(ФК|FC)\s+'), ''),
+      if (AppBrand.clubName.isNotEmpty) AppBrand.clubName.replaceFirst(RegExp(r'^(ФК|FC)\s+'), ''),
       if (team != null) ...team.name.split(RegExp(r'\s+')).where((w) => w.length > 3),
     ];
   }
@@ -103,7 +103,7 @@ class _ImportMatchesScreenState extends ConsumerState<ImportMatchesScreen> {
         Text(
           'Загрузите календарь сезона из Excel, Word, CSV или вставьте текст. Подойдёт таблица с колонками '
           '«Дата», «Время», «Соперник», «Дома/в гостях», «Стадион», «Турнир» или строки вида '
-          '«15.08 18:00 Зенит U16 (д)», «5 сентября, Амкар — Урал».',
+          '«15.08 18:00 Зенит U16 (д)», «5 сентября, Спартак — Урал».',
           style: t.textTheme.bodyMedium,
         ),
         const SizedBox(height: 16),

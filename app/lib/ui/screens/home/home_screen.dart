@@ -136,7 +136,7 @@ class _Hero extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(18, 16, 10, 18),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text('${AppBrand.clubName.toUpperCase()} · COACHPILOT',
+              Text(AppBrand.label.toUpperCase(),
                   style: const TextStyle(fontSize: 11, letterSpacing: 2, color: Colors.white70, fontWeight: FontWeight.w600)),
               const Spacer(),
               const SyncBadge(),

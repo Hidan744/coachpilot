@@ -7,8 +7,11 @@ import 'widgets/motion.dart';
 class AppBrand {
   static const appName = 'CoachPilot';
 
-  /// Название клуба задаётся при сборке: --dart-define=CLUB_NAME="ФК ..."
-  static const clubName = String.fromEnvironment('CLUB_NAME', defaultValue: 'ФК Амкар');
+  /// Название клуба задаётся при сборке: --dart-define=CLUB_NAME="ФК ...". По умолчанию — без клуба.
+  static const clubName = String.fromEnvironment('CLUB_NAME');
+
+  /// Подпись в шапках: «КЛУБ · COACHPILOT» или просто «COACHPILOT».
+  static String get label => clubName.isEmpty ? appName : '$clubName · $appName';
 }
 
 class AppColors {

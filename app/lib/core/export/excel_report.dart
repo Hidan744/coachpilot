@@ -137,7 +137,7 @@ Uint8List buildExcelReport(ExcelReportData r) {
       for (final s in r.stats.where((s) => s.matchId == m.id && s.minutes > 0 && playerById.containsKey(s.playerId)))
         [
           _d.format(m.startsAt), m.opponent, playerById[s.playerId]!.fullName, s.started ? 'да' : '', s.minutes, s.rating,
-          for (final k in statKeys) s[k.key] == 0 ? null : s[k.key].round(),
+          for (final k in statKeys) s[k.key] == 0 ? null : (k.step < 1 || k.max ? s[k.key] : s[k.key].round()),
         ],
   ], widths: [12, 20, 22]);
 
@@ -147,7 +147,7 @@ Uint8List buildExcelReport(ExcelReportData r) {
       if (season[p.id] != null)
         [
           p.fullName, season[p.id]!.games, season[p.id]!.starts, season[p.id]!.minutes,
-          for (final k in statKeys) season[p.id]![k.key].round(),
+          for (final k in statKeys) k.step < 1 || k.max ? double.parse(season[p.id]![k.key].toStringAsFixed(1)) : season[p.id]![k.key].round(),
           season[p.id]!.passAccuracy?.round(), season[p.id]!.avgRating,
         ],
   ]);

@@ -157,7 +157,7 @@ class AuthController extends Notifier<AuthState> {
 
   /// Версия примера данных: при изменении примера старые демо-данные в браузере заменяются новыми.
   static const _sampleKey = 'demo_sample';
-  static const _sampleVersion = '2';
+  static const _sampleVersion = '3';
   static const _demoProfile = {'name': 'Тренер', 'email': 'Демо-режим'};
 
   /// Попробовать без регистрации: всё работает на устройстве, без синхронизации и AI.
