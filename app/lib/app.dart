@@ -115,7 +115,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),
               GoRoute(path: 'edit/:id', builder: (_, s) => TeamEditScreen(teamId: s.pathParameters['id'])),
-              GoRoute(path: 'player/:id', builder: (_, s) => PlayerScreen(playerId: s.pathParameters['id']!), routes: [
+              GoRoute(
+                  path: 'player/:id',
+                  builder: (_, s) => PlayerScreen(
+                        playerId: s.pathParameters['id']!,
+                        initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0,
+                      ),
+                  routes: [
                 GoRoute(
                   path: 'test/:testId',
                   builder: (_, s) => PhysicalTestScreen(

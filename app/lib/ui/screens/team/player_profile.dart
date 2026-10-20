@@ -36,9 +36,12 @@ String _initials(Player p) =>
 
 /// Карточка игрока: обзор, ОФП, развитие, статистика, родителям.
 class PlayerScreen extends ConsumerWidget {
-  const PlayerScreen({super.key, required this.playerId});
+  const PlayerScreen({super.key, required this.playerId, this.initialTab = 0});
 
   final String playerId;
+
+  /// Открыть сразу вкладку: 0 обзор, 1 ОФП, 2 развитие, 3 статистика, 4 родителям.
+  final int initialTab;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,6 +51,7 @@ class PlayerScreen extends ConsumerWidget {
       final snap = ref.watch(playerSnapshotProvider(p.id));
       return DefaultTabController(
         length: 5,
+        initialIndex: initialTab.clamp(0, 4),
         child: Scaffold(
           appBar: AppBar(
             title: Text(p.fullName),
@@ -209,13 +213,16 @@ class _OverviewTab extends ConsumerWidget {
         }(),
     ];
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-      GridView.count(
-        crossAxisCount: 2,
+      // Плитки фиксированной высоты: на планшете — 4 в ряд.
+      GridView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.55,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: MediaQuery.sizeOf(context).width >= 560 ? 4 : 2,
+          mainAxisExtent: 112,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+        ),
         children: [
           for (final e in s.categoriesNow.entries)
             KpiTile(
@@ -769,13 +776,15 @@ class PlayerStatsTab extends ConsumerWidget {
       ('Удары в створ', st.shotAccuracy == null ? '—' : '${st.shotAccuracy!.round()}%'),
     ];
     return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-      GridView.count(
-        crossAxisCount: 3,
+      GridView(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 1.25,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: MediaQuery.sizeOf(context).width >= 560 ? 6 : 3,
+          mainAxisExtent: 92,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
         children: [
           for (final (label, value) in tiles)
             Container(

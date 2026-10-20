@@ -154,15 +154,25 @@ class AuthController extends Notifier<AuthState> {
   }
 
   static const _demoKey = 'demo';
+
+  /// Версия примера данных: при изменении примера старые демо-данные в браузере заменяются новыми.
+  static const _sampleKey = 'demo_sample';
+  static const _sampleVersion = '2';
   static const _demoProfile = {'name': 'Тренер', 'email': 'Демо-режим'};
 
   /// Попробовать без регистрации: всё работает на устройстве, без синхронизации и AI.
   Future<void> startDemo() async {
     if (demoSample && await _db.getKv('demo_empty') != '1') {
       final repo = ref.read(repoProvider);
-      if ((await repo.list(Entities.teams, Team.fromJson)).isEmpty) {
+      final hasTeams = (await repo.list(Entities.teams, Team.fromJson)).isNotEmpty;
+      // Пример обновился с прошлого визита (или его не было) — заполняем заново,
+      // чтобы все графики и статистика были на месте, а не старые пустые данные.
+      if (!hasTeams || await _db.getKv(_sampleKey) != _sampleVersion) {
+        if (hasTeams) await _db.wipe();
         final teamId = await _db.transaction(() => seedDemoData(repo));
         await _db.setKv('current_team', teamId);
+        await _db.setKv(_sampleKey, _sampleVersion);
+        ref.read(currentTeamIdProvider.notifier).select(teamId);
       }
     }
     await _db.setKv(_demoKey, '1');
@@ -181,6 +191,7 @@ class AuthController extends Notifier<AuthState> {
       final repo = ref.read(repoProvider);
       final teamId = await _db.transaction(() => seedDemoData(repo));
       await _db.setKv('current_team', teamId);
+      await _db.setKv(_sampleKey, _sampleVersion);
       ref.read(currentTeamIdProvider.notifier).select(teamId);
     }
     await startDemo();

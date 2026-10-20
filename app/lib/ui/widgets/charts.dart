@@ -63,9 +63,12 @@ class DashCard extends StatelessWidget {
 
 /// Показатель: большое число, подпись, изменение и полоса.
 class KpiTile extends StatelessWidget {
-  const KpiTile({super.key, required this.label, required this.value, this.delta, this.caption, this.progress, this.icon});
+  const KpiTile({super.key, required this.label, required this.value, this.delta, this.caption, this.progress, this.icon, this.onTap});
 
   final String label, value;
+
+  /// Нажатие открывает подробности показателя.
+  final VoidCallback? onTap;
 
   /// Изменение в процентах или пунктах: «+8%». Положительное — зелёное.
   final String? delta;
@@ -76,7 +79,7 @@ class KpiTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final up = delta != null && !delta!.startsWith('-') && !delta!.startsWith('−') && delta != '0';
-    return Container(
+    final tile = Container(
       padding: const EdgeInsets.all(14),
       decoration: cardDecoration(),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -89,6 +92,7 @@ class KpiTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11, letterSpacing: 1, color: AppColors.textMuted)),
           ),
+          if (onTap != null) const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
         ]),
         const SizedBox(height: 6),
         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
@@ -119,6 +123,11 @@ class KpiTile extends StatelessWidget {
           ),
         ],
       ]),
+    );
+    if (onTap == null) return tile;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: tile),
     );
   }
 }
@@ -240,7 +249,7 @@ class LineSeries {
   final List<double?> values;
 }
 
-class LineChart extends StatelessWidget {
+class LineChart extends StatefulWidget {
   const LineChart({super.key, required this.xLabels, required this.series, this.height = 180, this.minY, this.maxY, this.unit = ''});
 
   final List<String> xLabels;
@@ -250,22 +259,53 @@ class LineChart extends StatelessWidget {
   final String unit;
 
   @override
+  State<LineChart> createState() => _LineChartState();
+}
+
+class _LineChartState extends State<LineChart> {
+  /// Выбранная точка по оси X: нажатие или наведение показывает значения.
+  int? _sel;
+
+  void _pick(Offset at, double width) {
+    final n = widget.xLabels.length;
+    if (n == 0) return;
+    const left = 36.0;
+    final w = width - left - 8;
+    final i = n == 1 ? 0 : ((at.dx - left) / w * (n - 1)).round().clamp(0, n - 1);
+    if (i != _sel) setState(() => _sel = i);
+  }
+
+  @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         SizedBox(
-          height: height,
-          // Линии «прорисовываются» слева направо.
-          child: GrowIn(
-            duration: const Duration(milliseconds: 1100),
-            builder: (_, t) => ClipRect(
-              clipper: _RevealClipper(t),
-              child: CustomPaint(painter: _LinePainter(xLabels, series, minY, maxY, unit), size: Size.infinite),
+          height: widget.height,
+          child: LayoutBuilder(
+            builder: (context, box) => MouseRegion(
+              onHover: (e) => _pick(e.localPosition, box.maxWidth),
+              onExit: (_) => setState(() => _sel = null),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (e) => _pick(e.localPosition, box.maxWidth),
+                onHorizontalDragUpdate: (e) => _pick(e.localPosition, box.maxWidth),
+                // Линии «прорисовываются» слева направо.
+                child: GrowIn(
+                  duration: const Duration(milliseconds: 1100),
+                  builder: (_, t) => ClipRect(
+                    clipper: _RevealClipper(t),
+                    child: CustomPaint(
+                      painter: _LinePainter(widget.xLabels, widget.series, widget.minY, widget.maxY, widget.unit, t > 0.98 ? _sel : null),
+                      size: Size.infinite,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-        if (series.length > 1) ...[
+        if (widget.series.length > 1) ...[
           const SizedBox(height: 8),
           Wrap(spacing: 14, runSpacing: 4, children: [
-            for (final s in series)
+            for (final s in widget.series)
               Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 10, height: 10, decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
@@ -277,12 +317,13 @@ class LineChart extends StatelessWidget {
 }
 
 class _LinePainter extends CustomPainter {
-  _LinePainter(this.xLabels, this.series, this.minY, this.maxY, this.unit);
+  _LinePainter(this.xLabels, this.series, this.minY, this.maxY, this.unit, [this.selected]);
 
   final List<String> xLabels;
   final List<LineSeries> series;
   final double? minY, maxY;
   final String unit;
+  final int? selected;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -333,6 +374,23 @@ class _LinePainter extends CustomPainter {
         if (v != null) canvas.drawCircle(Offset(x(i), y(v)), 3.5, Paint()..color = s.color);
       }
     }
+
+    // Выбранная точка: вертикальная линия и подсказка со значениями.
+    final sel = selected;
+    if (sel != null && sel < xLabels.length) {
+      final sx = x(sel);
+      canvas.drawLine(Offset(sx, 6), Offset(sx, 6 + h), Paint()..color = AppColors.text.withValues(alpha: 0.35));
+      final lines = <(String, Color)>[(xLabels[sel], AppColors.textMuted)];
+      for (final s in series) {
+        final v = sel < s.values.length ? s.values[sel] : null;
+        if (v == null) continue;
+        canvas.drawCircle(Offset(sx, y(v)), 6, Paint()..color = s.color);
+        canvas.drawCircle(Offset(sx, y(v)), 3, Paint()..color = const Color(0xFF151517));
+        lines.add(('${series.length > 1 ? '${s.name}: ' : ''}${_fmt(v)}$unit', s.color));
+      }
+      if (lines.length == 1) lines.add(('нет данных', AppColors.textMuted));
+      paintTooltip(canvas, size, Offset(sx, 6), lines);
+    }
   }
 
   String _fmt(double v) => v.abs() >= 100 || v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
@@ -351,7 +409,7 @@ class _LinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_LinePainter old) => old.series != series || old.xLabels != xLabels;
+  bool shouldRepaint(_LinePainter old) => old.series != series || old.xLabels != xLabels || old.selected != selected;
 }
 
 // ---------------------------------------------------------------- столбцы
@@ -367,7 +425,8 @@ class BarGroup {
 }
 
 /// Сгруппированные столбцы: «было / стало», посещаемость по неделям.
-class BarChart extends StatelessWidget {
+/// Нажатие или наведение на столбец показывает его значения.
+class BarChart extends StatefulWidget {
   const BarChart({
     super.key,
     required this.groups,
@@ -377,6 +436,7 @@ class BarChart extends StatelessWidget {
     this.maxY,
     this.valueLabels = true,
     this.percent = false,
+    this.describe,
   });
 
   final List<BarGroup> groups;
@@ -386,31 +446,77 @@ class BarChart extends StatelessWidget {
   final double? maxY;
   final bool valueLabels, percent;
 
+  /// Своя подсказка для выбранной группы (строки сверху вниз).
+  final List<String> Function(int group)? describe;
+
+  @override
+  State<BarChart> createState() => _BarChartState();
+}
+
+class _BarChartState extends State<BarChart> {
+  int? _sel;
+
+  void _pick(Offset at, double width) {
+    if (widget.groups.isEmpty) return;
+    final i = (at.dx / (width / widget.groups.length)).floor().clamp(0, widget.groups.length - 1);
+    if (i != _sel) setState(() => _sel = i);
+  }
+
+  List<(String, Color)> _tooltip(int i) {
+    if (widget.describe != null) {
+      final d = widget.describe!(i);
+      return [for (var k = 0; k < d.length; k++) (d[k], k == 0 ? AppColors.textMuted : AppColors.text)];
+    }
+    final g = widget.groups[i];
+    String f(double v) => widget.percent ? '${(v * 100).round()}%' : (v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1));
+    return [
+      (g.label, AppColors.textMuted),
+      for (var k = 0; k < g.values.length; k++)
+        if (g.values[k] != null)
+          ('${widget.legend != null && k < widget.legend!.length ? '${widget.legend![k]}: ' : ''}${f(g.values[k]!)}',
+              widget.colors[k % widget.colors.length] == chartGrey ? AppColors.text : widget.colors[k % widget.colors.length]),
+      if (g.values.every((v) => v == null)) ('нет данных', AppColors.textMuted),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         SizedBox(
-          height: height,
-          child: GrowIn(
-            builder: (_, t) => CustomPaint(
-              painter: _BarPainter(
-                [for (final g in groups) BarGroup(g.label, [for (final v in g.values) v == null ? null : v * t], caption: g.caption)],
-                colors,
-                maxY ?? _maxOf(groups),
-                valueLabels && t > 0.98,
-                percent,
+          height: widget.height,
+          child: LayoutBuilder(
+            builder: (context, box) => MouseRegion(
+              onHover: (e) => _pick(e.localPosition, box.maxWidth),
+              onExit: (_) => setState(() => _sel = null),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (e) => _pick(e.localPosition, box.maxWidth),
+                onHorizontalDragUpdate: (e) => _pick(e.localPosition, box.maxWidth),
+                child: GrowIn(
+                  builder: (_, t) => CustomPaint(
+                    painter: _BarPainter(
+                      [for (final g in widget.groups) BarGroup(g.label, [for (final v in g.values) v == null ? null : v * t], caption: g.caption)],
+                      widget.colors,
+                      widget.maxY ?? _maxOf(widget.groups),
+                      widget.valueLabels && t > 0.98,
+                      widget.percent,
+                      t > 0.98 ? _sel : null,
+                      t > 0.98 && _sel != null && _sel! < widget.groups.length ? _tooltip(_sel!) : null,
+                    ),
+                    size: Size.infinite,
+                  ),
+                ),
               ),
-              size: Size.infinite,
             ),
           ),
         ),
-        if (legend != null) ...[
+        if (widget.legend != null) ...[
           const SizedBox(height: 8),
           Wrap(spacing: 14, children: [
-            for (var i = 0; i < legend!.length; i++)
+            for (var i = 0; i < widget.legend!.length; i++)
               Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(width: 10, height: 10, decoration: BoxDecoration(color: colors[i % colors.length], shape: BoxShape.circle)),
+                Container(width: 10, height: 10, decoration: BoxDecoration(color: widget.colors[i % widget.colors.length], shape: BoxShape.circle)),
                 const SizedBox(width: 6),
-                Text(legend![i], style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                Text(widget.legend![i], style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
               ]),
           ]),
         ],
@@ -418,12 +524,14 @@ class BarChart extends StatelessWidget {
 }
 
 class _BarPainter extends CustomPainter {
-  _BarPainter(this.groups, this.colors, this.maxY, this.valueLabels, this.percent);
+  _BarPainter(this.groups, this.colors, this.maxY, this.valueLabels, this.percent, [this.selected, this.tooltip]);
 
   final List<BarGroup> groups;
   final List<Color> colors;
   final double? maxY;
   final bool valueLabels, percent;
+  final int? selected;
+  final List<(String, Color)>? tooltip;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -449,7 +557,8 @@ class _BarPainter extends CustomPainter {
           topLeft: const Radius.circular(3),
           topRight: const Radius.circular(3),
         );
-        canvas.drawRRect(rect, Paint()..color = colors[k % colors.length]);
+        final dim = selected != null && selected != gi;
+        canvas.drawRRect(rect, Paint()..color = colors[k % colors.length].withValues(alpha: dim ? 0.35 : 1));
         if (valueLabels && bw >= 14) {
           _text(canvas, percent ? '${(v * 100).round()}%' : _fmt(v), Offset(x + bw / 2, top + h - bh - 8), 10, AppColors.text);
         }
@@ -459,6 +568,11 @@ class _BarPainter extends CustomPainter {
         _text(canvas, g.caption!, Offset(gw * gi + gw / 2, top + h + 23), 10,
             g.caption!.startsWith('-') ? AppColors.warn : AppColors.good, maxWidth: gw - 2);
       }
+    }
+    if (selected != null && tooltip != null) {
+      final g = groups[selected!];
+      final top0 = [for (final v in g.values.whereType<double>()) top + h - (hi == 0 ? 0.0 : h * (v / hi).clamp(0.0, 1.0))].fold(top + h, math.min);
+      paintTooltip(canvas, size, Offset(gw * selected! + gw / 2, top0), tooltip!);
     }
   }
 
@@ -475,7 +589,7 @@ class _BarPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_BarPainter old) => old.groups != groups;
+  bool shouldRepaint(_BarPainter old) => old.groups != groups || old.selected != selected;
 }
 
 // ---------------------------------------------------------------- кольцо и бублик
@@ -537,37 +651,77 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter old) => old.value != value;
 }
 
-/// Бублик со структурой (например, нагрузки по направлениям).
-class DonutChart extends StatelessWidget {
+/// Бублик со структурой (например, нагрузки по направлениям). Нажатие на часть или строку легенды выделяет её.
+class DonutChart extends StatefulWidget {
   const DonutChart({super.key, required this.parts, this.size = 130});
 
   final Map<String, num> parts;
   final double size;
 
   @override
+  State<DonutChart> createState() => _DonutChartState();
+}
+
+class _DonutChartState extends State<DonutChart> {
+  int? _sel;
+
+  void _toggle(int i) => setState(() => _sel = _sel == i ? null : i);
+
+  @override
   Widget build(BuildContext context) {
-    final total = parts.values.fold<num>(0, (a, b) => a + b);
-    final entries = parts.entries.where((e) => e.value > 0).toList();
+    final total = widget.parts.values.fold<num>(0, (a, b) => a + b);
+    final entries = widget.parts.entries.where((e) => e.value > 0).toList();
+    final values = [for (final e in entries) e.value.toDouble()];
+    int pct(int i) => (entries[i].value * 100 / (total == 0 ? 1 : total)).round();
     return Row(children: [
       SizedBox.square(
-        dimension: size,
-        child: GrowIn(
-          builder: (_, t) => CustomPaint(painter: _DonutPainter([for (final e in entries) e.value.toDouble()], t)),
+        dimension: widget.size,
+        child: GestureDetector(
+          onTapDown: (e) {
+            final c = Offset(widget.size / 2, widget.size / 2);
+            final v = e.localPosition - c;
+            if (v.distance < widget.size / 2 - 36 || total == 0) return setState(() => _sel = null);
+            var a = math.atan2(v.dy, v.dx) + math.pi / 2;
+            if (a < 0) a += 2 * math.pi;
+            var acc = 0.0;
+            for (var i = 0; i < values.length; i++) {
+              acc += 2 * math.pi * values[i] / total;
+              if (a <= acc) return _toggle(i);
+            }
+          },
+          child: GrowIn(
+            builder: (_, t) => CustomPaint(
+              painter: _DonutPainter(values, t, _sel),
+              child: _sel == null || _sel! >= entries.length
+                  ? null
+                  : Center(
+                      child: Text('${pct(_sel!)}%',
+                          style: TextStyle(fontFamily: AppTheme.display, fontSize: widget.size * 0.18, fontWeight: FontWeight.w700)),
+                    ),
+            ),
+          ),
         ),
       ),
       const SizedBox(width: 16),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (var i = 0; i < entries.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(children: [
-                Container(width: 10, height: 10, decoration: BoxDecoration(color: chartPalette[i % chartPalette.length], shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Expanded(child: Text(entries[i].key, style: const TextStyle(fontSize: 13))),
-                Text('${(entries[i].value * 100 / (total == 0 ? 1 : total)).round()}%',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-              ]),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _toggle(i),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _sel == null || _sel == i ? 1 : 0.4,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+                  child: Row(children: [
+                    Container(width: 10, height: 10, decoration: BoxDecoration(color: chartPalette[i % chartPalette.length], shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(entries[i].key, style: TextStyle(fontSize: 13, fontWeight: _sel == i ? FontWeight.w700 : null))),
+                    Text('${pct(i)}%', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
             ),
         ]),
       ),
@@ -576,10 +730,11 @@ class DonutChart extends StatelessWidget {
 }
 
 class _DonutPainter extends CustomPainter {
-  _DonutPainter(this.values, [this.t = 1]);
+  _DonutPainter(this.values, [this.t = 1, this.selected]);
 
   final List<double> values;
   final double t;
+  final int? selected;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -596,13 +751,22 @@ class _DonutPainter extends CustomPainter {
     var a = -math.pi / 2;
     for (var i = 0; i < values.length; i++) {
       final sweep = 2 * math.pi * values[i] / total * t;
-      canvas.drawArc(Rect.fromCircle(center: c, radius: r), a, sweep - 0.03, false, p..color = chartPalette[i % chartPalette.length]);
+      final on = selected == null || selected == i;
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: r),
+        a,
+        sweep - 0.03,
+        false,
+        p
+          ..strokeWidth = selected == i ? 28 : 22
+          ..color = chartPalette[i % chartPalette.length].withValues(alpha: on ? 1 : 0.3),
+      );
       a += sweep;
     }
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) => old.values != values || old.t != t;
+  bool shouldRepaint(_DonutPainter old) => old.values != values || old.t != t || old.selected != selected;
 }
 
 /// Горизонтальная полоса «сейчас → цель» с отметкой цели.
@@ -635,6 +799,40 @@ class TargetBar extends StatelessWidget {
       );
 }
 
+/// Подсказка над точкой графика: тёмная плашка со строками, не выходит за края.
+void paintTooltip(Canvas canvas, Size size, Offset anchor, List<(String, Color)> lines) {
+  final painters = [
+    for (var i = 0; i < lines.length; i++)
+      TextPainter(
+        text: TextSpan(
+          text: lines[i].$1,
+          style: TextStyle(color: lines[i].$2, fontSize: i == 0 ? 10.5 : 12.5, fontWeight: i == 0 ? FontWeight.w500 : FontWeight.w700),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: math.max(40, size.width - 16)),
+  ];
+  final w = painters.fold<double>(0, (a, p) => math.max(a, p.width)) + 16;
+  final h = painters.fold<double>(0, (a, p) => a + p.height) + 10;
+  var x = anchor.dx - w / 2;
+  x = x.clamp(0.0, math.max(0.0, size.width - w));
+  var y = anchor.dy - h - 8;
+  if (y < 0) y = math.min(anchor.dy + 10, math.max(0.0, size.height - h));
+  final box = RRect.fromRectAndRadius(Rect.fromLTWH(x, y, w, h), const Radius.circular(8));
+  canvas.drawRRect(box, Paint()..color = const Color(0xF0252529));
+  canvas.drawRRect(
+    box,
+    Paint()
+      ..color = AppColors.red.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke,
+  );
+  var dy = y + 5;
+  for (final p in painters) {
+    p.paint(canvas, Offset(x + 8, dy));
+    dy += p.height;
+  }
+}
 
 double? _maxOf(List<BarGroup> groups) {
   final all = [for (final g in groups) ...g.values.whereType<double>()];

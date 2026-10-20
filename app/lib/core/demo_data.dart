@@ -277,6 +277,92 @@ Future<String> seedDemoData(Repo repo, {DateTime? now}) async {
     ),
   );
 
+  // Программа развития и сообщения родителям для остальных игроков — по позиции,
+  // чтобы в демо у каждого профиля были заполнены все вкладки.
+  final cycleStart = day.subtract(Duration(days: day.weekday - 1 + 7));
+  const templates = {
+    'GK': (
+      'Игра на выходах и первый пас',
+      'Увереннее играть на выходах и начинать атаку точным пасом',
+      ['goalkeeping', 'passing'],
+      [('Точность передач', 68.0, 78.0, '%'), ('Реакция: сейвы за матч', 3.0, 4.0, '')],
+      ['Выходы на навесы — 2 раза в неделю', 'Пас в одно касание после приёма — 50 повторений', 'Командовать обороной голосом'],
+      'Надёжен на линии — добавляем игру ногами и выходы.',
+    ),
+    'DF': (
+      'Отбор и выход из обороны',
+      'Чаще выигрывать единоборства и не терять мяч при выходе из обороны',
+      ['defending', 'passing'],
+      [('Отборы за матч', 3.0, 4.0, ''), ('Точность передач', 74.0, 82.0, '%')],
+      ['Игра 1×1 в обороне — 3 раза в неделю', 'Длинная передача на фланг — 30 повторений', 'Разбор своих единоборств по видео'],
+      'Хорошо читает игру — работаем над первым пасом после отбора.',
+    ),
+    'MF': (
+      'Видение поля и передачи вперёд',
+      'Чаще отдавать обостряющие передачи и успевать в оборону',
+      ['passing', 'tactics', 'physical'],
+      [('Точность передач', 78.0, 85.0, '%'), ('Челночный бег 3×10 м', 7.9, 7.6, 'с')],
+      ['Осмотр перед приёмом мяча — каждое упражнение', 'Передачи между линиями — 40 повторений', 'Интервальный бег 6×200 м'],
+      'Связывает линии — добавляем остроту передач и выносливость.',
+    ),
+    'FW': (
+      'Завершение и игра спиной',
+      'Забивать больше из штрафной и держать мяч спиной к воротам',
+      ['finishing', 'physical'],
+      [('Удары в створ', 50.0, 60.0, '%'), ('Бег 10 м', 1.9, 1.82, 'с')],
+      ['Удары после рывка — 3 раза в неделю', 'Игра спиной к воротам с защитником', 'Стартовая скорость: 6×10 м'],
+      'Активен в штрафной — работаем над точностью и стартом.',
+    ),
+  };
+  const parentNotes = [
+    ('psychology', 'После неудачного эпизода быстро возвращается в игру — хвалите за это дома. Уверенность растёт.'),
+    ('extra_training', 'Дома 2–3 раза в неделю: 15 минут жонглирования и работа слабой ногой о стенку.'),
+    ('nutrition', 'В день тренировки — полноценный обед за 2–3 часа, бутылка воды с собой.'),
+    ('general', 'Стал внимательнее на теоретических разборах, задаёт хорошие вопросы. Так держать!'),
+  ];
+  var pi = 0;
+  for (final p in players) {
+    if (p.id == fw.id) continue;
+    final t = templates[p.position] ?? templates['MF']!;
+    final shift = (pi % 3) * 0.04;
+    await repo.put(
+      Entities.devPlans,
+      DevelopmentPlan(
+        id: newId(),
+        playerId: p.id,
+        period: pi.isEven ? 'cycle4' : 'cycle6',
+        title: t.$1,
+        startsOn: cycleStart,
+        endsOn: cycleStart.add(Duration(days: pi.isEven ? 27 : 41)),
+        keyGoal: t.$2,
+        focus: t.$3,
+        targets: [
+          for (final (i, (name, cur, target, unit)) in t.$4.indexed)
+            PlanTarget(
+              name: name,
+              // Небольшой разброс, чтобы у игроков были разные текущие значения.
+              current: round2(cur + (target - cur) * shift),
+              target: target,
+              unit: unit,
+              priority: i == 0 ? 'high' : 'medium',
+            ),
+        ],
+        items: [
+          for (final (i, text) in t.$5.indexed) PlanItem(text: text, kind: 'task', done: i < 1 + pi % 2),
+        ],
+        comment: t.$6,
+      ),
+    );
+    for (var n = 0; n < 2; n++) {
+      final (cat, text) = parentNotes[(pi + n) % parentNotes.length];
+      await repo.put(
+        Entities.parentNotes,
+        ParentNote(id: newId(), playerId: p.id, category: cat, text: text, writtenAt: day.subtract(Duration(days: 3 + n * 9 + pi % 4))),
+      );
+    }
+    pi++;
+  }
+
   await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Сергей Ильин', role: 'assistant', teamIds: [team.id]));
   await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Олег Ткачёв', role: 'fitness', teamIds: [team.id]));
   await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Виктор Лапин', role: 'goalkeeper', teamIds: [team.id]));

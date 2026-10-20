@@ -374,12 +374,13 @@ class _QuickActions extends ConsumerWidget {
       (Icons.query_stats, 'Статистика\nигроков', () => context.go('/team?tab=2')),
       (Icons.menu_book_outlined, 'Библиотека\nупражнений', () => context.go('/library')),
     ];
-    // Плитки фиксированного размера: на широком экране их больше в ряду, но они не раздуваются.
-    return GridView(
+    // Плитки фиксированной высоты: 3 в ряд, на широком экране — все 6 в один ряд.
+    return LayoutBuilder(
+      builder: (context, box) => GridView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 170,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: box.maxWidth >= 720 ? 6 : 3,
         mainAxisExtent: 108,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
@@ -422,6 +423,7 @@ class _QuickActions extends ConsumerWidget {
           ),
           ),
       ],
+    ),
     );
   }
 }

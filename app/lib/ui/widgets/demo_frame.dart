@@ -1,5 +1,6 @@
-// Демо на широком экране: приложение показывается в рамке телефона, рядом — витрина возможностей.
-// На телефоне и планшете в портрете рамки нет — приложение занимает весь экран.
+// Демо на широком экране: приложение показывается в рамке планшета, рядом — витрина возможностей.
+// Планшет подбирается по высоте окна и всегда целиком помещается на экране.
+// На телефоне и планшете рамки нет — приложение занимает весь экран.
 
 import 'package:flutter/material.dart';
 
@@ -12,8 +13,6 @@ class DemoFrame extends StatelessWidget {
 
   /// Переход на экран приложения по ссылке из витрины (например, '/team?tab=1').
   final ValueChanged<String> onOpen;
-
-  static const _phoneWidth = 400.0;
 
   static const _features = [
     (Icons.space_dashboard_outlined, 'Дашборд тренера', 'Посещаемость, нагрузка, ОФП, результаты — на главной', '/'),
@@ -31,36 +30,40 @@ class DemoFrame extends StatelessWidget {
     final mq = MediaQuery.of(context);
     final size = mq.size;
     // Узкий экран — обычное приложение на весь экран.
-    if (size.width < 760 || size.height < 560) return child;
+    if (size.width < 900 || size.height < 600) return child;
 
-    final phoneHeight = (size.height - 48).clamp(560.0, 900.0);
-    final phone = Container(
-      width: _phoneWidth + 16,
-      height: phoneHeight + 16,
-      padding: const EdgeInsets.all(8),
+    // Планшет в портрете 3:4 по высоте окна; витрина слева, если хватает ширины.
+    const bezel = 14.0, margin = 24.0, showcaseWidth = 420.0, gap = 56.0;
+    var frameH = (size.height - 2 * margin).clamp(560.0, 1180.0);
+    var frameW = frameH * 0.75;
+    final showcase = size.width >= frameW + showcaseWidth + gap + 2 * margin;
+    if (!showcase && frameW > size.width - 2 * margin) {
+      frameW = size.width - 2 * margin;
+      frameH = frameW / 0.75;
+    }
+    final screen = Size(frameW - 2 * bezel, frameH - 2 * bezel);
+    final tablet = Container(
+      width: frameW,
+      height: frameH,
+      padding: const EdgeInsets.all(bezel),
       decoration: BoxDecoration(
         color: const Color(0xFF050505),
-        borderRadius: BorderRadius.circular(44),
+        borderRadius: BorderRadius.circular(34),
         border: Border.all(color: const Color(0xFF2A2A2E), width: 2),
         boxShadow: [
-          BoxShadow(color: AppColors.red.withValues(alpha: 0.25), blurRadius: 80, spreadRadius: 4),
+          BoxShadow(color: AppColors.red.withValues(alpha: 0.22), blurRadius: 90, spreadRadius: 4),
           const BoxShadow(color: Colors.black, blurRadius: 30, offset: Offset(0, 20)),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(36),
+        borderRadius: BorderRadius.circular(20),
         child: MediaQuery(
-          data: mq.copyWith(
-            size: Size(_phoneWidth, phoneHeight),
-            padding: EdgeInsets.zero,
-            viewPadding: EdgeInsets.zero,
-          ),
-          child: child,
+          data: mq.copyWith(size: screen, padding: EdgeInsets.zero, viewPadding: EdgeInsets.zero),
+          child: SizedBox.fromSize(size: screen, child: child),
         ),
       ),
     );
 
-    final showcase = size.width >= 1080;
     return ColoredBox(
       color: const Color(0xFF0B0B0D),
       child: Stack(
@@ -81,8 +84,18 @@ class DemoFrame extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (showcase) ...[SizedBox(width: 440, child: _Showcase(onOpen: onOpen)), const SizedBox(width: 64)],
-                phone,
+                if (showcase) ...[
+                  // На невысоком экране витрина прокручивается, а не обрезается.
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: showcaseWidth, maxHeight: size.height),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: margin),
+                      child: _Showcase(onOpen: onOpen),
+                    ),
+                  ),
+                  const SizedBox(width: gap),
+                ],
+                tablet,
               ],
             ),
           ),

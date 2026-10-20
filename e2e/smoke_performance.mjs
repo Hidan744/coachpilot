@@ -69,6 +69,10 @@ try {
   await tap(page, 'Дашборд', { exact: true });
   await see(page, 'Посещаемость по неделям');
   await shot(page, 'perf-05-dashboard');
+  // Отчёты — внизу дашборда: прокручиваем к ним.
+  await page.mouse.move(200, 500);
+  await page.mouse.wheel(0, 3000);
+  await page.waitForTimeout(800);
   const xlsx = page.waitForEvent('download', { timeout: 30000 });
   await tap(page, 'Для штаба: Excel');
   const d2 = await xlsx;

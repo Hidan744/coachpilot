@@ -118,61 +118,46 @@ class TeamDashboard extends ConsumerWidget {
             .take(3)
             .toList();
 
-    final children = <Widget>[
-      GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.45,
-        children: [
-          KpiTile(
-            icon: Icons.groups_outlined,
-            label: 'Посещаемость',
-            value: attNow == null ? '—' : '${(attNow * 100).round()}%',
-            delta: attNow != null && attPrev != null ? '${signed(((attNow - attPrev) * 100).round())}%' : null,
-            caption: 'за 4 недели',
-            progress: attNow,
-          ),
-          KpiTile(
-            icon: Icons.fitness_center,
-            label: 'Средняя нагрузка',
-            value: loads.isEmpty ? '—' : '${mean(loads).round()}',
-            caption: loads.isEmpty ? 'укажите RPE в отчёте занятия' : 'усл. ед. / тренировка',
-          ),
-          KpiTile(
-            icon: Icons.speed,
-            label: 'ОФП команды',
-            value: physNow == null ? '—' : '${physNow.round()}',
-            delta: physNow != null && physFirst != null && physNow != physFirst ? signed((physNow - physFirst).round()) : null,
-            caption: 'средний балл',
-            progress: (physNow ?? 0) / 100,
-          ),
-          KpiTile(
-            icon: Icons.emoji_events_outlined,
-            label: 'Матчи',
-            value: played.isEmpty ? '—' : '$w-$d-$l',
-            caption: played.isEmpty
-                ? 'результатов пока нет'
-                : 'победы-ничьи-поражения · ${played.fold<int>(0, (a, m) => a + m.scoreFor!)}:${played.fold<int>(0, (a, m) => a + m.scoreAgainst!)}',
-          ),
-        ],
+    final kpis = [
+      KpiTile(
+        icon: Icons.groups_outlined,
+        label: 'Посещаемость',
+        value: attNow == null ? '—' : '${(attNow * 100).round()}%',
+        delta: attNow != null && attPrev != null ? '${signed(((attNow - attPrev) * 100).round())}%' : null,
+        caption: 'за 4 недели',
+        progress: attNow,
+        onTap: () => _attendanceDetails(context, players, attendance, byId, now),
       ),
-      const SizedBox(height: 12),
-      DashCard(
-        title: 'Посещаемость по неделям',
-        child: BarChart(
-          groups: [for (final (wk, v) in weeks) BarGroup(DateFormat('d.MM').format(wk), [v])],
-          colors: const [AppColors.red],
-          maxY: 1,
-          percent: true,
-          valueLabels: false,
-          height: 130,
-        ),
+      KpiTile(
+        icon: Icons.fitness_center,
+        label: 'Средняя нагрузка',
+        value: loads.isEmpty ? '—' : '${mean(loads).round()}',
+        caption: loads.isEmpty ? 'укажите RPE в отчёте занятия' : 'усл. ед. / тренировка',
+        onTap: () => _loadDetails(context, recent.toList(), reports),
       ),
-      if (physTrend.any((v) => v != null)) ...[
-        const SizedBox(height: 12),
+      KpiTile(
+        icon: Icons.speed,
+        label: 'ОФП команды',
+        value: physNow == null ? '—' : '${physNow.round()}',
+        delta: physNow != null && physFirst != null && physNow != physFirst ? signed((physNow - physFirst).round()) : null,
+        caption: 'средний балл',
+        progress: (physNow ?? 0) / 100,
+        onTap: () => _physicalDetails(context, players, tests, age),
+      ),
+      KpiTile(
+        icon: Icons.emoji_events_outlined,
+        label: 'Матчи',
+        value: played.isEmpty ? '—' : '$w-$d-$l',
+        caption: played.isEmpty
+            ? 'результатов пока нет'
+            : 'победы-ничьи-поражения · ${played.fold<int>(0, (a, m) => a + m.scoreFor!)}:${played.fold<int>(0, (a, m) => a + m.scoreAgainst!)}',
+        onTap: () => _matchDetails(context, played),
+      ),
+    ];
+
+    final cards = <Widget>[
+      _AttendanceCard(attendance: attendance, sessions: byId, now: now),
+      if (physTrend.any((v) => v != null))
         DashCard(
           title: 'Динамика ОФП',
           child: LineChart(
@@ -182,9 +167,7 @@ class TeamDashboard extends ConsumerWidget {
             maxY: 100,
           ),
         ),
-      ],
-      if (metricChange.isNotEmpty) ...[
-        const SizedBox(height: 12),
+      if (metricChange.isNotEmpty)
         DashCard(
           title: 'Результаты тестов',
           child: Column(children: [
@@ -206,16 +189,11 @@ class TeamDashboard extends ConsumerWidget {
             const Text('Средний прирост от первого тестирования к последнему', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
           ]),
         ),
-      ],
-      if (structure.values.any((v) => v > 0)) ...[
-        const SizedBox(height: 12),
-        DashCard(title: 'Структура нагрузки (8 недель)', child: DonutChart(parts: structure)),
-      ],
-      if (season.isNotEmpty) ...[
-        const SizedBox(height: 12),
+      if (structure.values.any((v) => v > 0)) DashCard(title: 'Структура нагрузки (8 недель)', child: DonutChart(parts: structure)),
+      if (season.isNotEmpty)
         DashCard(
           title: 'Лидеры сезона',
-          child: Column(children: [
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final (title, list, fmt) in [
               ('Бомбардиры', top((s) => s['goals']), (double v) => v.round().toString()),
               ('Ассистенты', top((s) => s['assists']), (double v) => v.round().toString()),
@@ -224,15 +202,22 @@ class TeamDashboard extends ConsumerWidget {
               if (list.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    SizedBox(width: 120, child: Text(title, style: const TextStyle(color: AppColors.textMuted))),
-                    Expanded(child: Text([for (final e in list) '${e.key.fullName} ${fmt(e.value)}'].join(' · '))),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(title, style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+                    const SizedBox(height: 4),
+                    // Игрок — кнопка: открывает его статистику.
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final e in list)
+                        ActionChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text('${e.key.fullName}  ${fmt(e.value)}'),
+                          onPressed: () => context.push('/team/player/${e.key.id}?tab=3'),
+                        ),
+                    ]),
                   ]),
                 ),
           ]),
         ),
-      ],
-      const SizedBox(height: 12),
       DashCard(
         title: 'Отчёты',
         child: Column(children: [
@@ -251,11 +236,147 @@ class TeamDashboard extends ConsumerWidget {
         ]),
       ),
     ];
+
     // Карточки появляются по очереди — дашборд «собирается» сверху вниз.
-    var i = 0;
-    final animated = [for (final w in children) w is SizedBox ? w : Appear(index: i++, child: w)];
-    if (embedded) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: animated);
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 120), children: animated);
+    // На планшете показатели — в один ряд, карточки — парами.
+    final content = LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 760;
+      var i = 0;
+      Widget a(Widget w) => Appear(index: i++, child: w);
+      final rows = <Widget>[
+        a(GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: wide ? 4 : 2,
+            mainAxisExtent: 128,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+          ),
+          children: kpis,
+        )),
+      ];
+      for (var k = 0; k < cards.length; k += wide ? 2 : 1) {
+        rows.add(const SizedBox(height: 12));
+        if (wide && k + 1 < cards.length) {
+          // Без IntrinsicHeight: графики строятся через LayoutBuilder.
+          rows.add(Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: a(cards[k])),
+            const SizedBox(width: 12),
+            Expanded(child: a(cards[k + 1])),
+          ]));
+        } else {
+          rows.add(a(cards[k]));
+        }
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+    });
+    if (embedded) return content;
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 120), children: [content]);
+  }
+
+  // ---------------------------------------------------------------- подробности показателей
+
+  void _details(BuildContext context, String title, String hint, List<Widget> rows) => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (c) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          maxChildSize: 0.95,
+          builder: (c, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+            Text(title, style: const TextStyle(fontFamily: AppTheme.display, fontSize: 22, fontWeight: FontWeight.w700)),
+            Text(hint, style: const TextStyle(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            if (rows.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Пока нет данных.')),
+            ...rows,
+          ]),
+        ),
+      );
+
+  void _attendanceDetails(BuildContext context, List<Player> players, List<Attendance> marks, Map<String, TrainingSession> sessions, DateTime now) {
+    final from = now.subtract(const Duration(days: 28));
+    final rows = <(Player, int, int)>[];
+    for (final p in players) {
+      var present = 0, total = 0;
+      for (final a in marks.where((a) => a.playerId == p.id)) {
+        final s = sessions[a.sessionId];
+        final at = s?.startedAt ?? s?.scheduledAt;
+        if (at == null || at.isBefore(from)) continue;
+        total++;
+        if (a.status == 'present' || a.status == 'late') present++;
+      }
+      if (total > 0) rows.add((p, present, total));
+    }
+    rows.sort((a, b) => (a.$2 / a.$3).compareTo(b.$2 / b.$3));
+    _details(context, 'Посещаемость', 'За 4 недели, сначала — кто пропускает чаще. Нажмите на игрока.', [
+      for (final (p, present, total) in rows)
+        _DetailRow(
+          title: p.fullName,
+          subtitle: 'был на $present из $total',
+          value: '${(present * 100 / total).round()}%',
+          progress: present / total,
+          warn: present / total < 0.75,
+          onTap: () => context.push('/team/player/${p.id}'),
+        ),
+    ]);
+  }
+
+  void _loadDetails(BuildContext context, List<TrainingSession> recent, Map<String, SessionReport> reports) {
+    recent.sort((a, b) => (b.startedAt ?? b.scheduledAt ?? DateTime(2000)).compareTo(a.startedAt ?? a.scheduledAt ?? DateTime(2000)));
+    final loads = [for (final s in recent) sessionLoad(s, reports[s.id])];
+    final maxLoad = loads.whereType<int>().fold<int>(1, (a, b) => b > a ? b : a);
+    _details(context, 'Нагрузка', 'Занятия за 4 недели: RPE × минуты. Нажмите, чтобы открыть итоги занятия.', [
+      for (var i = 0; i < recent.length; i++)
+        _DetailRow(
+          title: recent[i].title,
+          subtitle: '${formatWhen(recent[i].startedAt ?? recent[i].scheduledAt)}'
+              '${reports[recent[i].id]?.rpe == null ? ' · RPE не указан' : ' · RPE ${reports[recent[i].id]!.rpe}'}',
+          value: loads[i]?.toString() ?? '—',
+          progress: (loads[i] ?? 0) / maxLoad,
+          onTap: () => context.push('/sessions/${recent[i].id}/summary'),
+        ),
+    ]);
+  }
+
+  void _physicalDetails(BuildContext context, List<Player> players, List<PhysicalTest> tests, Map<String, int> age) {
+    final rows = <(Player, int, int?)>[];
+    for (final p in players) {
+      final pt = tests.where((t) => t.playerId == p.id).toList()..sort((a, b) => a.testedOn.compareTo(b.testedOn));
+      if (pt.isEmpty) continue;
+      final last = physicalOverall(pt.last, age[p.id]!);
+      if (last == null) continue;
+      final first = pt.length > 1 ? physicalOverall(pt.first, age[p.id]!) : null;
+      rows.add((p, last, first == null ? null : last - first));
+    }
+    rows.sort((a, b) => b.$2.compareTo(a.$2));
+    _details(context, 'ОФП команды', 'Балл 0–100 по нормам возраста и рост с первого тестирования. Нажмите на игрока.', [
+      for (final (p, score, delta) in rows)
+        _DetailRow(
+          title: p.fullName,
+          subtitle: delta == null ? 'одно тестирование' : 'с первого теста: ${signed(delta)}',
+          value: '$score',
+          progress: score / 100,
+          warn: score < 50,
+          onTap: () => context.push('/team/player/${p.id}?tab=1'),
+        ),
+    ]);
+  }
+
+  void _matchDetails(BuildContext context, List<Match> played) {
+    final list = [...played]..sort((a, b) => b.startsAt.compareTo(a.startsAt));
+    _details(context, 'Матчи', 'Сыгранные матчи. Нажмите, чтобы открыть статистику игроков.', [
+      for (final m in list)
+        _DetailRow(
+          title: '${m.home ? '' : '@ '}${m.opponent}',
+          subtitle: '${DateFormat('d MMMM', 'ru').format(m.startsAt)}${m.competition.isEmpty ? '' : ' · ${m.competition}'}',
+          value: '${m.scoreFor}:${m.scoreAgainst}',
+          warn: m.scoreFor! < m.scoreAgainst!,
+          good: m.scoreFor! > m.scoreAgainst!,
+          onTap: () => context.push('/calendar/match/${m.id}/stats'),
+        ),
+    ]);
   }
 
   void _pickPlayer(BuildContext context, List<Player> players) => showModalBottomSheet<void>(
@@ -297,6 +418,117 @@ class _ReportTile extends StatelessWidget {
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       );
+}
+
+/// Строка подробностей: название, подпись, значение и полоса.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    this.progress,
+    this.warn = false,
+    this.good = false,
+    required this.onTap,
+  });
+
+  final String title, subtitle, value;
+  final double? progress;
+  final bool warn, good;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(subtitle, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+                if (progress != null) ...[const SizedBox(height: 6), TargetBar(progress: progress!, height: 6)],
+              ]),
+            ),
+            const SizedBox(width: 12),
+            Text(value,
+                style: TextStyle(
+                  fontFamily: AppTheme.display,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: warn ? AppColors.warn : (good ? AppColors.good : AppColors.text),
+                )),
+            const Icon(Icons.chevron_right, color: AppColors.textMuted),
+          ]),
+        ),
+      );
+}
+
+/// Посещаемость по неделям с выбором периода.
+class _AttendanceCard extends StatefulWidget {
+  const _AttendanceCard({required this.attendance, required this.sessions, required this.now});
+
+  final List<Attendance> attendance;
+  final Map<String, TrainingSession> sessions;
+  final DateTime now;
+
+  @override
+  State<_AttendanceCard> createState() => _AttendanceCardState();
+}
+
+class _AttendanceCardState extends State<_AttendanceCard> {
+  int _weeks = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final weeks = attendanceByWeek(widget.attendance, widget.sessions, weeks: _weeks, now: widget.now);
+    // Сколько отметок в каждой неделе — для подсказки «был N из M».
+    final counts = List.filled(_weeks, 0);
+    final start = weeks.first.$1;
+    for (final a in widget.attendance) {
+      final s = widget.sessions[a.sessionId];
+      final at = s?.startedAt ?? s?.scheduledAt;
+      if (at == null) continue;
+      final i = weekStart(at).difference(start).inDays ~/ 7;
+      if (i >= 0 && i < _weeks) counts[i]++;
+    }
+    return DashCard(
+      title: 'Посещаемость по неделям',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<int>(
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            segments: const [
+              ButtonSegment(value: 4, label: Text('4 недели')),
+              ButtonSegment(value: 12, label: Text('12 недель')),
+              ButtonSegment(value: 26, label: Text('Полгода')),
+            ],
+            selected: {_weeks},
+            onSelectionChanged: (v) => setState(() => _weeks = v.first),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text('Нажмите на столбец, чтобы увидеть неделю', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        BarChart(
+        key: ValueKey(_weeks),
+        groups: [for (final (wk, v) in weeks) BarGroup(DateFormat('d.MM').format(wk), [v])],
+        colors: const [AppColors.red],
+        maxY: 1,
+        percent: true,
+        valueLabels: _weeks <= 4,
+        height: 140,
+        describe: (i) => [
+          'неделя с ${DateFormat('d MMMM', 'ru').format(weeks[i].$1)}',
+          weeks[i].$2 == null ? 'занятий не было' : '${(weeks[i].$2! * 100).round()}% · отметок: ${counts[i]}',
+        ],
+      ),
+      ]),
+    );
+  }
 }
 
 /// Статистика сезона по команде: таблица по игрокам.
