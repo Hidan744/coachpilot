@@ -171,14 +171,20 @@ void main() {
     addTearDown(db.close);
     final repo = Repo(db);
     final now = DateTime(2026, 10, 20);
-    final teamId = await db.transaction(() => seedDemoData(repo, now: now));
+    final mainId = await db.transaction(() => seedDemoData(repo, now: now));
+    // Две команды: основной состав (взрослые) и академия U16.
+    final teams = await repo.list(Entities.teams, Team.fromJson);
+    expect(teams.map((t) => t.name), containsAll(['Основной состав', 'Академия U16']));
+    expect(teams.firstWhere((t) => t.id == mainId).ageGroup, 'adult');
+    final teamId = teams.firstWhere((t) => t.name == 'Академия U16').id;
     final players = await repo.list(Entities.players, Player.fromJson, parentId: teamId);
     expect(players.length, 16);
+    expect((await repo.list(Entities.players, Player.fromJson, parentId: mainId)).length, 16);
     final stats = await repo.list(Entities.matchStats, MatchStat.fromJson);
     final tests = await repo.list(Entities.physicalTests, PhysicalTest.fromJson);
     final sessions = await repo.list(Entities.sessions, TrainingSession.fromJson);
     expect(stats, isNotEmpty);
-    expect(tests.length, 48);
+    expect(tests.length, 96);
     expect(sessions.length, greaterThanOrEqualTo(19));
 
     // Сводка по игроку: есть «было» и «стало», ОФП растёт.
@@ -206,7 +212,7 @@ void main() {
     expect(profile.values.whereType<int>().length, gameAxes.length);
     expect(snap.attendancePct, greaterThan(70));
 
-    final team = (await repo.list(Entities.teams, Team.fromJson)).single;
+    final team = teams.firstWhere((t) => t.id == teamId);
     final bytes = buildExcelReport(ExcelReportData(
       team: team,
       players: players,

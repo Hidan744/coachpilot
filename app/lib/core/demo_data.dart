@@ -26,12 +26,71 @@ const _squad = [
   ('Марк', 'Белов', 'FW', 11),
 ];
 
-const _opponents = ['Зенит', 'Урал', 'Крылья Советов', 'Рубин', 'Спартак', 'Чертаново', 'Локомотив', 'Динамо', 'ЦСКА', 'Краснодар'];
+/// Основной состав: взрослые игроки, профессиональный уровень.
+const _proSquad = [
+  ('Антон', 'Широков', 'GK', 1, 29),
+  ('Илья', 'Лантратов', 'GK', 35, 24),
+  ('Сергей', 'Багров', 'DF', 2, 27),
+  ('Павел', 'Ивашин', 'DF', 4, 30),
+  ('Никита', 'Чернов', 'DF', 5, 26),
+  ('Даниил', 'Круглов', 'DF', 3, 23),
+  ('Артур', 'Гараев', 'DF', 15, 25),
+  ('Алексей', 'Миронов', 'MF', 6, 28),
+  ('Владислав', 'Сафонов', 'MF', 8, 24),
+  ('Константин', 'Рябов', 'MF', 10, 27),
+  ('Егор', 'Тарасов', 'MF', 14, 22),
+  ('Максим', 'Глушков', 'MF', 17, 25),
+  ('Тимофей', 'Орехов', 'MF', 18, 21),
+  ('Андрей', 'Комаров', 'FW', 7, 26),
+  ('Денис', 'Шустов', 'FW', 9, 28),
+  ('Роман', 'Еремеев', 'FW', 11, 23),
+];
+
+const _opponents = [
+  'Зенит',
+  'Урал',
+  'Крылья Советов',
+  'Рубин',
+  'Спартак',
+  'Чертаново',
+  'Локомотив',
+  'Динамо',
+  'ЦСКА',
+  'Краснодар',
+];
 const _played = 8;
 
-/// Заполнить пример. Возвращает id созданной команды.
+/// Заполнить пример: основной состав (взрослые, профессиональный уровень) и академия U16.
+/// Возвращает id основного состава.
 Future<String> seedDemoData(Repo repo, {DateTime? now}) async {
   final today = now ?? DateTime.now();
+
+  final main = Team(
+    id: newId(),
+    name: 'Основной состав',
+    ageGroup: 'adult',
+    level: 'pro',
+    defaultPlayers: 22,
+    fieldType: 'full',
+    equipment: const ['balls', 'cones', 'bibs', 'goals', 'mini_goals', 'poles', 'ladder'],
+  );
+  await repo.put(Entities.teams, main);
+  final pros = <Player>[];
+  for (final (first, last, pos, n, age) in _proSquad) {
+    final p = Player(
+      id: newId(),
+      teamId: main.id,
+      firstName: first,
+      lastName: last,
+      position: pos,
+      number: n,
+      birthYear: today.year - age,
+    );
+    pros.add(p);
+    await repo.put(Entities.players, p);
+  }
+  // Основа тренируется с 16:00, академия — с 10:00.
+  await seedTeamHistory(repo, main, pros, now: now, seed: 7, startHour: 16);
 
   final team = Team(
     id: newId(),
@@ -46,32 +105,68 @@ Future<String> seedDemoData(Repo repo, {DateTime? now}) async {
 
   final players = <Player>[];
   for (final (first, last, pos, n) in _squad) {
-    final p = Player(id: newId(), teamId: team.id, firstName: first, lastName: last, position: pos, number: n, birthYear: today.year - 16);
+    final p = Player(
+      id: newId(),
+      teamId: team.id,
+      firstName: first,
+      lastName: last,
+      position: pos,
+      number: n,
+      birthYear: today.year - 16,
+    );
     players.add(p);
     await repo.put(Entities.players, p);
   }
 
-  await seedTeamHistory(repo, team, players, now: now);
-  await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Сергей Ильин', role: 'assistant', teamIds: [team.id]));
-  await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Олег Ткачёв', role: 'fitness', teamIds: [team.id]));
-  await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Виктор Лапин', role: 'goalkeeper', teamIds: [team.id]));
-  return team.id;
+  await seedTeamHistory(repo, team, players, now: now, startHour: 10);
+  await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Михаил Громов', role: 'head', teamIds: [main.id]));
+  await repo.put(
+    Entities.staff,
+    StaffMember(id: newId(), name: 'Сергей Ильин', role: 'assistant', teamIds: [main.id, team.id]),
+  );
+  await repo.put(
+    Entities.staff,
+    StaffMember(id: newId(), name: 'Олег Ткачёв', role: 'fitness', teamIds: [main.id, team.id]),
+  );
+  await repo.put(
+    Entities.staff,
+    StaffMember(id: newId(), name: 'Виктор Лапин', role: 'goalkeeper', teamIds: [main.id, team.id]),
+  );
+  await repo.put(Entities.staff, StaffMember(id: newId(), name: 'Анна Белова', role: 'analyst', teamIds: [main.id]));
+  return main.id;
 }
 
 /// Демо-история для команды и её игроков: расписание, тренировки с посещаемостью и нагрузкой,
 /// матчи со статистикой, тесты ОФП, оценки навыков, программы развития и сообщения родителям.
 /// Работает и для своей команды в демо — чтобы сразу увидеть всю аналитику на своих игроках.
-Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTime? now, int seed = 16}) async {
+Future<void> seedTeamHistory(
+  Repo repo,
+  Team team,
+  List<Player> players, {
+  DateTime? now,
+  int seed = 16,
+  int startHour = 16,
+}) async {
   if (players.isEmpty) return;
   final rnd = math.Random(seed);
   final today = now ?? DateTime.now();
   final day = DateTime(today.year, today.month, today.day);
   double r(double a, double b) => a + rnd.nextDouble() * (b - a);
   double round2(double v) => (v * 100).round() / 100;
-  // Расписание: пн, ср, пт 16:00–18:00 весь сезон.
+  final adult = team.ageGroup == 'adult';
+  final hh = startHour.toString().padLeft(2, '0');
+  // Расписание: пн, ср, пт по 2 часа весь сезон.
   await repo.put(
     Entities.slots,
-    ScheduleSlot(id: newId(), teamId: team.id, title: 'Тренировка ${team.name}', weekdays: const [1, 3, 5], startTime: '16:00', durationMin: 120, location: 'Стадион «Звезда»'),
+    ScheduleSlot(
+      id: newId(),
+      teamId: team.id,
+      title: 'Тренировка ${team.name}',
+      weekdays: const [1, 3, 5],
+      startTime: '$hh:00',
+      durationMin: 120,
+      location: 'Стадион «Звезда»',
+    ),
   );
 
   // Проведённые тренировки за 10 недель (пн и ср) с посещаемостью и нагрузкой.
@@ -87,7 +182,7 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
   var k = 0;
   while (monday.isBefore(day)) {
     for (final offset in [0, 2]) {
-      final at = monday.add(Duration(days: offset, hours: 16));
+      final at = monday.add(Duration(days: offset, hours: startHour));
       if (!at.isBefore(day)) continue;
       k++;
       final s = TrainingSession(
@@ -103,14 +198,23 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
         finishedAt: at.add(const Duration(minutes: 110)),
         blocks: [
           for (final (phase, title, min, cat) in blocksTemplate)
-            TrainingBlock(id: newId(), phase: phase, title: title, durationMin: min, drill: {'category': cat, 'title': title}),
+            TrainingBlock(
+              id: newId(),
+              phase: phase,
+              title: title,
+              durationMin: min,
+              drill: {'category': cat, 'title': title},
+            ),
         ],
       );
       await repo.put(Entities.sessions, s);
       for (final p in players) {
         final roll = rnd.nextDouble();
         final status = roll < 0.84 ? 'present' : (roll < 0.9 ? 'late' : (roll < 0.95 ? 'excused' : 'absent'));
-        await repo.put(Entities.attendance, Attendance(id: attendanceId(s.id, p.id), sessionId: s.id, playerId: p.id, status: status));
+        await repo.put(
+          Entities.attendance,
+          Attendance(id: attendanceId(s.id, p.id), sessionId: s.id, playerId: p.id, status: status),
+        );
       }
       await repo.put(
         Entities.reports,
@@ -144,12 +248,12 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
     final m = Match(
       id: newId(),
       teamId: team.id,
-      opponent: '${_opponents[i]} ${team.ageGroup}',
+      opponent: adult ? _opponents[i] : '${_opponents[i]} ${team.ageGroup}',
       startsAt: at,
       durationMin: 80,
       home: i.isEven,
       venue: i.isEven ? 'Стадион «Звезда»' : '',
-      competition: 'Первенство России ${team.ageGroup}',
+      competition: adult ? 'Первая лига' : 'Первенство России ${team.ageGroup}',
       status: played ? 'played' : 'scheduled',
     );
     if (!played) {
@@ -164,10 +268,13 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
             matchId: m.id,
             title: 'Матч: ${m.opponent}',
             formation: '4-4-2',
-            scheme: Scheme(field: 'full_v', items: [
-              ...formationItems('4-4-2', lineup: assignLineup('4-4-2', players)),
-              ...formationItems('4-3-3', opponent: true),
-            ]),
+            scheme: Scheme(
+              field: 'full_v',
+              items: [
+                ...formationItems('4-4-2', lineup: assignLineup('4-4-2', players)),
+                ...formationItems('4-3-3', opponent: true),
+              ],
+            ),
             notes: 'Высокий прессинг первые 15 минут, атаки через фланги.',
           ),
         );
@@ -189,7 +296,9 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
     for (final p in [...lineup, ...bench]) {
       final starter = lineup.contains(p);
       final gk = p.position == 'GK';
-      final fw = p.position == 'FW', mf = p.position == 'MF' || !['GK', 'DF', 'FW'].contains(p.position), df = p.position == 'DF';
+      final fw = p.position == 'FW',
+          mf = p.position == 'MF' || !['GK', 'DF', 'FW'].contains(p.position),
+          df = p.position == 'DF';
       final st = style[p.id]!;
       final minutes = starter ? (rnd.nextDouble() < 0.2 ? 60 + rnd.nextInt(15) : 80) : (15 + rnd.nextInt(20));
       final f = minutes / 80;
@@ -212,7 +321,9 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
         'recoveries': gk ? r(1, 4).roundToDouble() : ((df || mf ? r(3, 8) : r(1, 4)) * st.defend * f).roundToDouble(),
         'duels': duels.toDouble(),
         'duels_won': (duels * (r(0.38, 0.62) * (0.7 + st.defend * 0.25)).clamp(0.2, 0.85)).roundToDouble(),
-        'losses': gk ? r(0, 2).roundToDouble() : ((fw ? r(6, 13) : (mf ? r(4, 10) : r(2, 7))) * f / st.pass).roundToDouble(),
+        'losses': gk
+            ? r(0, 2).roundToDouble()
+            : ((fw ? r(6, 13) : (mf ? r(4, 10) : r(2, 7))) * f / st.pass).roundToDouble(),
         'fouls': gk ? 0.0 : n(0, 2.5).toDouble(),
         'distance': round2((gk ? r(4.2, 5.2) : (mf ? r(8.4, 10.6) : r(7.6, 9.6))) * st.run * f),
         'sprints': gk ? 0.0 : ((fw ? r(14, 26) : r(8, 20)) * st.run * f).roundToDouble(),
@@ -232,20 +343,30 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
           started: starter,
           minutes: minutes,
           // Оценка следует из действий: голы, голевые, созидание, борьба, потери.
-          rating: round2((r(5.6, 6.6) +
-                  goals * 0.9 +
-                  stats['assists']! * 0.6 +
-                  stats['key_passes']! * 0.15 +
-                  stats['duels_won']! * 0.06 +
-                  stats['dribbles']! * 0.08 +
-                  (stats['saves'] ?? 0) * 0.12 -
-                  stats['losses']! * 0.03)
-              .clamp(4.5, 9.6)),
+          rating: round2(
+            (r(5.6, 6.6) +
+                    goals * 0.9 +
+                    stats['assists']! * 0.6 +
+                    stats['key_passes']! * 0.15 +
+                    stats['duels_won']! * 0.06 +
+                    stats['dribbles']! * 0.08 +
+                    (stats['saves'] ?? 0) * 0.12 -
+                    stats['losses']! * 0.03)
+                .clamp(4.5, 9.6),
+          ),
           stats: stats,
         ),
       );
     }
-    await repo.put(Entities.matches, Match.fromJson(m.id, m.toJson()..['score_for'] = goalsFor..['score_against'] = goalsAgainst));
+    await repo.put(
+      Entities.matches,
+      Match.fromJson(
+        m.id,
+        m.toJson()
+          ..['score_for'] = goalsFor
+          ..['score_against'] = goalsAgainst,
+      ),
+    );
   }
 
   // Тесты ОФП: три тестирования с ростом результатов.
@@ -280,7 +401,13 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       final base = 2 + rnd.nextInt(3);
       await repo.put(
         Entities.assessments,
-        PlayerAssessment(id: newId(), playerId: p.id, skill: skill, score: base, assessedAt: day.subtract(const Duration(days: 95))),
+        PlayerAssessment(
+          id: newId(),
+          playerId: p.id,
+          skill: skill,
+          score: base,
+          assessedAt: day.subtract(const Duration(days: 95)),
+        ),
       );
       await repo.put(
         Entities.assessments,
@@ -296,7 +423,10 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
   }
 
   // Программа развития и сообщение родителям для нападающего.
-  final fw = players.firstWhere((p) => p.lastName == 'Степанов', orElse: () => players.firstWhere((p) => p.position == 'FW', orElse: () => players.first));
+  final fw = players.firstWhere(
+    (p) => p.lastName == 'Степанов',
+    orElse: () => players.firstWhere((p) => p.position == 'FW', orElse: () => players.first),
+  );
   await repo.put(
     Entities.devPlans,
     DevelopmentPlan(
@@ -309,8 +439,22 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       keyGoal: 'Быстрее открываться за спину защитникам и чаще бить в створ',
       focus: const ['finishing', 'physical'],
       targets: const [
-        PlanTarget(name: 'Бег 10 м', current: 1.86, target: 1.78, unit: 'с', measure: 'С места, лучшая из 2 попыток', priority: 'high'),
-        PlanTarget(name: 'Удары в створ', current: 48, target: 60, unit: '%', measure: 'Статистика матчей за цикл', priority: 'high'),
+        PlanTarget(
+          name: 'Бег 10 м',
+          current: 1.86,
+          target: 1.78,
+          unit: 'с',
+          measure: 'С места, лучшая из 2 попыток',
+          priority: 'high',
+        ),
+        PlanTarget(
+          name: 'Удары в створ',
+          current: 48,
+          target: 60,
+          unit: '%',
+          measure: 'Статистика матчей за цикл',
+          priority: 'high',
+        ),
         PlanTarget(name: 'Прыжок в длину с места', current: 218, target: 228, unit: 'см', priority: 'medium'),
       ],
       items: const [
@@ -322,16 +466,18 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       comment: 'Хорошо читает момент для открывания — добавляем скорость и точность удара.',
     ),
   );
-  await repo.put(
-    Entities.parentNotes,
-    ParentNote(
-      id: newId(),
-      playerId: fw.id,
-      category: 'nutrition',
-      text: 'Перед игрой — завтрак за 2–3 часа, больше воды в день матча. Сон не меньше 9 часов.',
-      writtenAt: day.subtract(const Duration(days: 2)),
-    ),
-  );
+  if (!adult) {
+    await repo.put(
+      Entities.parentNotes,
+      ParentNote(
+        id: newId(),
+        playerId: fw.id,
+        category: 'nutrition',
+        text: 'Перед игрой — завтрак за 2–3 часа, больше воды в день матча. Сон не меньше 9 часов.',
+        writtenAt: day.subtract(const Duration(days: 2)),
+      ),
+    );
+  }
 
   // Программа развития и сообщения родителям для остальных игроков — по позиции,
   // чтобы в демо у каждого профиля были заполнены все вкладки.
@@ -342,7 +488,11 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       'Увереннее играть на выходах и начинать атаку точным пасом',
       ['goalkeeping', 'passing'],
       [('Точность передач', 68.0, 78.0, '%'), ('Реакция: сейвы за матч', 3.0, 4.0, '')],
-      ['Выходы на навесы — 2 раза в неделю', 'Пас в одно касание после приёма — 50 повторений', 'Командовать обороной голосом'],
+      [
+        'Выходы на навесы — 2 раза в неделю',
+        'Пас в одно касание после приёма — 50 повторений',
+        'Командовать обороной голосом',
+      ],
       'Надёжен на линии — добавляем игру ногами и выходы.',
     ),
     'DF': (
@@ -350,7 +500,11 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       'Чаще выигрывать единоборства и не терять мяч при выходе из обороны',
       ['defending', 'passing'],
       [('Отборы за матч', 3.0, 4.0, ''), ('Точность передач', 74.0, 82.0, '%')],
-      ['Игра 1×1 в обороне — 3 раза в неделю', 'Длинная передача на фланг — 30 повторений', 'Разбор своих единоборств по видео'],
+      [
+        'Игра 1×1 в обороне — 3 раза в неделю',
+        'Длинная передача на фланг — 30 повторений',
+        'Разбор своих единоборств по видео',
+      ],
       'Хорошо читает игру — работаем над первым пасом после отбора.',
     ),
     'MF': (
@@ -358,7 +512,11 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
       'Чаще отдавать обостряющие передачи и успевать в оборону',
       ['passing', 'tactics', 'physical'],
       [('Точность передач', 78.0, 85.0, '%'), ('Челночный бег 3×10 м', 7.9, 7.6, 'с')],
-      ['Осмотр перед приёмом мяча — каждое упражнение', 'Передачи между линиями — 40 повторений', 'Интервальный бег 6×200 м'],
+      [
+        'Осмотр перед приёмом мяча — каждое упражнение',
+        'Передачи между линиями — 40 повторений',
+        'Интервальный бег 6×200 м',
+      ],
       'Связывает линии — добавляем остроту передач и выносливость.',
     ),
     'FW': (
@@ -403,20 +561,24 @@ Future<void> seedTeamHistory(Repo repo, Team team, List<Player> players, {DateTi
               priority: i == 0 ? 'high' : 'medium',
             ),
         ],
-        items: [
-          for (final (i, text) in t.$5.indexed) PlanItem(text: text, kind: 'task', done: i < 1 + pi % 2),
-        ],
+        items: [for (final (i, text) in t.$5.indexed) PlanItem(text: text, kind: 'task', done: i < 1 + pi % 2)],
         comment: t.$6,
       ),
     );
-    for (var n = 0; n < 2; n++) {
+    // Сообщения родителям — только для юношеской команды.
+    for (var n = 0; n < (adult ? 0 : 2); n++) {
       final (cat, text) = parentNotes[(pi + n) % parentNotes.length];
       await repo.put(
         Entities.parentNotes,
-        ParentNote(id: newId(), playerId: p.id, category: cat, text: text, writtenAt: day.subtract(Duration(days: 3 + n * 9 + pi % 4))),
+        ParentNote(
+          id: newId(),
+          playerId: p.id,
+          category: cat,
+          text: text,
+          writtenAt: day.subtract(Duration(days: 3 + n * 9 + pi % 4)),
+        ),
       );
     }
     pi++;
   }
-
 }
