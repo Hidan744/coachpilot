@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/scheme_animation.dart';
 import '../../data/models.dart';
 
 /// Пропорции площадки (ширина / высота) для каждого типа поля.
@@ -51,25 +53,113 @@ class SchemeColors {
   static const pole = Color(0xFFFFEB3B);
 }
 
-/// Схема упражнения: только просмотр. Для редактирования — SchemeEditor.
-class SchemeView extends StatelessWidget {
+/// Схема упражнения для просмотра. Если на схеме есть стрелки движения, её можно проиграть:
+/// игроки и мяч двигаются по стрелкам шаг за шагом.
+class SchemeView extends StatefulWidget {
   const SchemeView(this.scheme, {super.key, this.selected});
 
   final Scheme scheme;
   final int? selected;
 
   @override
-  Widget build(BuildContext context) => AspectRatio(
-        aspectRatio: fieldAspect(scheme.field),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: CustomPaint(painter: SchemePainter(scheme, selected: selected)),
-        ),
+  State<SchemeView> createState() => _SchemeViewState();
+}
+
+class _SchemeViewState extends State<SchemeView> with SingleTickerProviderStateMixin {
+  late SchemeAnimation _anim = SchemeAnimation(widget.scheme);
+  late final AnimationController _c = AnimationController(vsync: this)..addListener(() => setState(() {}));
+
+  /// Секунд на один шаг.
+  static const stepSeconds = 1.6;
+
+  @override
+  void didUpdateWidget(SchemeView old) {
+    super.didUpdateWidget(old);
+    // Экран пересоздаёт схему при каждом обновлении данных — сравниваем содержимое, иначе анимация сбрасывалась бы.
+    if (!identical(old.scheme, widget.scheme) && jsonEncode(old.scheme.toJson()) != jsonEncode(widget.scheme.toJson())) {
+      _anim = SchemeAnimation(widget.scheme);
+      _c.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    if (_c.isAnimating) {
+      _c.stop();
+    } else {
+      if (_c.value >= 1) _c.value = 0;
+      _c.duration = Duration(milliseconds: (stepSeconds * 1000 * _anim.stepCount).round());
+      _c.forward();
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playing = _c.isAnimating;
+    final started = _c.value > 0;
+    final t = _c.value * _anim.stepCount;
+    final canPlay = _anim.hasMotion;
+    return AspectRatio(
+      aspectRatio: fieldAspect(widget.scheme.field),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(fit: StackFit.expand, children: [
+          CustomPaint(
+            painter: SchemePainter(
+              widget.scheme,
+              selected: widget.selected,
+              positions: started ? _anim.positionsAt(t) : null,
+              activeStep: started && _c.value < 1 ? _anim.steps[_anim.stepIndexAt(t)] : null,
+            ),
+          ),
+          if (canPlay && _anim.stepCount > 1 && started)
+            Positioned(
+              left: 8,
+              top: 8,
+              child: _Badge('Шаг ${_anim.stepIndexAt(t) + 1} из ${_anim.stepCount}'),
+            ),
+          if (canPlay)
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: IconButton.filled(
+                tooltip: playing ? 'Пауза анимации' : 'Показать движение',
+                style: IconButton.styleFrom(backgroundColor: Colors.black.withValues(alpha: 0.65)),
+                onPressed: _toggle,
+                icon: Icon(
+                  playing ? Icons.pause : (_c.value >= 1 ? Icons.replay : Icons.play_arrow),
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.65), borderRadius: BorderRadius.circular(8)),
+        child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       );
 }
 
 class SchemePainter extends CustomPainter {
-  SchemePainter(this.scheme, {this.selected, this.preview});
+  SchemePainter(this.scheme, {this.selected, this.preview, this.positions, this.activeStep, this.showSteps = true});
 
   final Scheme scheme;
   final int? selected;
@@ -77,11 +167,21 @@ class SchemePainter extends CustomPainter {
   /// Стрелка, которую пользователь тянет прямо сейчас.
   final SchemeItem? preview;
 
+  /// Позиции объектов во время анимации (индекс элемента → точка); отрицательные ключи — появившиеся мячи.
+  final Map<int, Offset>? positions;
+
+  /// Шаг, который сейчас проигрывается: остальные стрелки приглушены.
+  final int? activeStep;
+
+  /// Подписывать номера шагов у стрелок, если шагов больше одного.
+  final bool showSteps;
+
   @override
   void paint(Canvas canvas, Size size) {
     _paintField(canvas, size);
     final s = math.min(size.width, size.height);
     final items = [...scheme.items, ?preview];
+    final multiStep = showSteps && scheme.steps.length > 1;
     // Сначала зоны и стрелки, сверху — игроки и инвентарь.
     final order = [
       for (var i = 0; i < items.length; i++)
@@ -92,8 +192,29 @@ class SchemePainter extends CustomPainter {
         if (!items[i].isArrow) i,
     ];
     for (final i in order) {
-      _paintItem(canvas, size, s, items[i], highlighted: i == selected);
+      var it = items[i];
+      final pos = positions?[i];
+      if (pos != null && !it.isArrow) {
+        it = SchemeItem(type: it.type, x: pos.dx, y: pos.dy, label: it.label);
+      }
+      final dim = activeStep != null && it.isMovement && it.stepOrFirst != activeStep;
+      if (dim) canvas.saveLayer(null, Paint()..color = const Color.fromRGBO(0, 0, 0, 0.25));
+      _paintItem(canvas, size, s, it, highlighted: i == selected);
+      if (dim) canvas.restore();
+      if (multiStep && it.isMovement && positions == null) _stepBadge(canvas, size, s, it);
     }
+    for (final e in positions?.entries ?? const <MapEntry<int, Offset>>[]) {
+      if (e.key < 0) _paintItem(canvas, size, s, SchemeItem(type: 'ball', x: e.value.dx, y: e.value.dy));
+    }
+  }
+
+  void _stepBadge(Canvas canvas, Size size, double s, SchemeItem it) {
+    final r = s * 0.022;
+    final a = Offset(it.x * size.width, it.y * size.height);
+    final b = Offset((it.x2 ?? it.x) * size.width, (it.y2 ?? it.y) * size.height);
+    final c = Offset.lerp(a, b, 0.5)!;
+    canvas.drawCircle(c, r, Paint()..color = Colors.black.withValues(alpha: 0.75));
+    _text(canvas, '${it.stepOrFirst}', c, r * 1.3, Colors.white);
   }
 
   void _paintField(Canvas canvas, Size size) {
@@ -296,7 +417,11 @@ class SchemePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(SchemePainter old) =>
-      old.scheme != scheme || old.selected != selected || old.preview != preview;
+      old.scheme != scheme ||
+      old.selected != selected ||
+      old.preview != preview ||
+      old.positions != positions ||
+      old.activeStep != activeStep;
 }
 
 /// Значок типа элемента для палитры редактора.
@@ -322,7 +447,7 @@ class SchemeItemIcon extends StatelessWidget {
 }
 
 class _IconPainter extends SchemePainter {
-  _IconPainter(SchemeItem item) : super(Scheme(field: 'grid', items: [item]));
+  _IconPainter(SchemeItem item) : super(Scheme(field: 'grid', items: [item]), showSteps: false);
 
   @override
   void paint(Canvas canvas, Size size) {

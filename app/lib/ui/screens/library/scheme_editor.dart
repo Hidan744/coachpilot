@@ -30,6 +30,40 @@ class _SchemeEditorScreenState extends State<SchemeEditorScreen> {
   Offset? _dragStart;
   SchemeItem? _preview;
 
+  /// Шаг анимации для новых стрелок.
+  int _step = 1;
+
+  int get _maxStep => _scheme.steps.fold(1, (a, b) => b > a ? b : a);
+
+  SchemeItem? get _selectedArrow {
+    final i = _selected;
+    return i != null && _scheme.items[i].isMovement ? _scheme.items[i] : null;
+  }
+
+  /// Выбор шага: для выбранной стрелки меняет её шаг, иначе — шаг для новых стрелок.
+  void _setStep(int step) {
+    final i = _selected;
+    if (i != null && _scheme.items[i].isMovement) {
+      final items = [..._scheme.items];
+      items[i] = items[i].withStep(step);
+      _commit(Scheme(field: _scheme.field, items: items));
+    }
+    setState(() => _step = step);
+  }
+
+  void _preview2() => showModalBottomSheet(
+        context: context,
+        showDragHandle: true,
+        builder: (c) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Нажмите ▶, чтобы увидеть движение', style: Theme.of(c).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            SchemeView(_scheme),
+          ]),
+        ),
+      );
+
   void _commit(Scheme next) {
     _history.add(_scheme);
     if (_history.length > 50) _history.removeAt(0);
@@ -107,7 +141,14 @@ class _SchemeEditorScreenState extends State<SchemeEditorScreen> {
       _dragStart = n;
       setState(() => _scheme = Scheme(field: _scheme.field, items: items));
     } else if (_tool.startsWith('arrow_') || _tool == 'zone') {
-      setState(() => _preview = SchemeItem(type: _tool, x: start.dx, y: start.dy, x2: n.dx, y2: n.dy));
+      setState(() => _preview = SchemeItem(
+            type: _tool,
+            x: start.dx,
+            y: start.dy,
+            x2: n.dx,
+            y2: n.dy,
+            step: _tool == 'zone' ? null : _step,
+          ));
     }
   }
 
@@ -134,8 +175,13 @@ class _SchemeEditorScreenState extends State<SchemeEditorScreen> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Схема'),
+        // Без заголовка: на узком экране панели нужно место под кнопки.
         actions: [
+          IconButton(
+            tooltip: 'Проиграть движение',
+            onPressed: _scheme.items.any((e) => e.isMovement) ? _preview2 : null,
+            icon: const Icon(Icons.play_circle_outline),
+          ),
           IconButton(tooltip: 'Отменить', onPressed: _history.isEmpty ? null : _undo, icon: const Icon(Icons.undo)),
           IconButton(
             tooltip: 'Удалить выбранное',
@@ -198,13 +244,39 @@ class _SchemeEditorScreenState extends State<SchemeEditorScreen> {
             ),
           ),
         ),
+        if (_tool.startsWith('arrow_') || _selectedArrow != null)
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              children: [
+                Center(
+                  child: Text(
+                    _selectedArrow != null ? 'Шаг стрелки:  ' : 'Шаг движения:  ',
+                    style: t.textTheme.labelLarge,
+                  ),
+                ),
+                for (var k = 1; k <= _maxStep + 1; k++)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(k > _maxStep ? '+ $k' : '$k'),
+                      selected: (_selectedArrow?.stepOrFirst ?? _step) == k,
+                      onSelected: (_) => _setStep(k),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             _tool == 'select'
                 ? 'Коснитесь элемента, чтобы выбрать; перетащите, чтобы передвинуть'
                 : _tool.startsWith('arrow_') || _tool == 'zone'
-                    ? 'Протяните пальцем: ${schemeItemLabels[_tool]!.toLowerCase()}'
+                    ? 'Протяните от игрока или мяча: ${schemeItemLabels[_tool]!.toLowerCase()}. '
+                        'Стрелки одного шага двигаются одновременно.'
                     : 'Коснитесь поля: ${schemeItemLabels[_tool]!.toLowerCase()}',
             style: t.textTheme.bodySmall,
             textAlign: TextAlign.center,

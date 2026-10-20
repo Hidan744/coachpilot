@@ -7,6 +7,7 @@ import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../widgets/common.dart';
+import 'import_players_screen.dart';
 import 'team_form.dart';
 
 final playersProvider = StreamProvider.family<List<Player>, String>(
@@ -79,6 +80,8 @@ class TeamScreen extends ConsumerWidget {
           PopupMenuButton<String>(
             onSelected: (v) async {
               switch (v) {
+                case 'import':
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImportPlayersScreen(teamId: team.id)));
                 case 'edit':
                   context.push('/team/edit/${team.id}');
                 case 'new':
@@ -95,6 +98,7 @@ class TeamScreen extends ConsumerWidget {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'import', child: Text('Импорт игроков (Excel, Word)')),
               PopupMenuItem(value: 'edit', child: Text('Изменить команду')),
               PopupMenuItem(value: 'new', child: Text('Новая команда')),
               PopupMenuItem(value: 'delete', child: Text('Удалить команду')),
@@ -121,9 +125,19 @@ class TeamScreen extends ConsumerWidget {
           ),
           SectionTitle('Игроки'),
           if (list.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Добавьте игроков, чтобы отмечать посещаемость и вести карточки развития.'),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('Добавьте игроков, чтобы отмечать посещаемость и вести карточки развития.'),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Загрузить список из Excel или Word'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => ImportPlayersScreen(teamId: team.id)),
+                  ),
+                ),
+              ]),
             ),
           for (final p in list) _PlayerTile(player: p, stats: attendanceStats(attendance, p.id)),
         ]);

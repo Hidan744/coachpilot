@@ -128,3 +128,13 @@ def mock_report_from_prompt(user_prompt: str) -> dict:
         "observations": observations,
         "suggestions": ["Стоит повторить ключевое упражнение с усложнением в следующем занятии."],
     }
+
+
+def mock_drills_from_prompt(user_prompt: str) -> dict:
+    """Mock-провайдер для импорта: абзац — упражнение, первая строка — название, остальное — шаги."""
+    text = user_prompt.split("УПРАЖНЕНИЯ:", 1)[1].strip()
+    drills = []
+    for block in [b.strip() for b in text.split("\n\n") if b.strip()]:
+        lines = [ln.strip(" -•\t") for ln in block.splitlines() if ln.strip()]
+        drills.append({"title": lines[0][:150], "category": "technique", "steps": lines[1:] or [lines[0]]})
+    return {"drills": drills}

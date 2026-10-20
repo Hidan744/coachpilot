@@ -7,6 +7,7 @@ import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../widgets/common.dart';
 import '../../widgets/scheme_view.dart';
+import 'import_drills_screen.dart';
 import 'scheme_editor.dart';
 
 final drillsProvider = StreamProvider<List<Drill>>((ref) => ref.watch(repoProvider).watchDrills().map((l) {
@@ -113,14 +114,22 @@ class LibraryScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(pickMode ? 'Выбор упражнения' : 'Библиотека'),
-        actions: [if (!pickMode) const SyncBadge()],
+        actions: [
+          if (!pickMode)
+            IconButton(
+              tooltip: 'Импорт упражнений из файла',
+              icon: const Icon(Icons.upload_file),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ImportDrillsScreen())),
+            ),
+          if (!pickMode) const SyncBadge(),
+        ],
       ),
       floatingActionButton: pickMode
           ? null
           : FloatingActionButton.extended(
               onPressed: () => context.push('/library/edit/new'),
               icon: const Icon(Icons.add),
-              label: const Text('Своё'),
+              label: const Text('Своё упражнение'),
             ),
       body: Column(children: [
         Padding(
@@ -185,7 +194,17 @@ class LibraryScreen extends ConsumerWidget {
                     : f.tab == 'favorites'
                         ? 'В избранном пусто'
                         : 'Ничего не найдено',
-                text: f.tab == 'mine' ? 'Создайте своё или скопируйте упражнение из библиотеки и измените его.' : null,
+                text: f.tab == 'mine'
+                    ? 'Создайте своё, скопируйте упражнение из библиотеки или загрузите свои упражнения файлом.'
+                    : null,
+                action: f.tab == 'mine'
+                    ? OutlinedButton.icon(
+                        icon: const Icon(Icons.upload_file),
+                        label: const Text('Загрузить из Word или Excel'),
+                        onPressed: () =>
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ImportDrillsScreen())),
+                      )
+                    : null,
               );
             }
             return ListView.separated(

@@ -14,8 +14,9 @@ def _p(t, x, y, label=None):
     return d
 
 
-def _a(t, x, y, x2, y2):
-    return {"type": t, "x": round(x, 3), "y": round(y, 3), "x2": round(x2, 3), "y2": round(y2, 3)}
+def _a(t, x, y, x2, y2, step=1):
+    """Стрелка движения; step — шаг анимации (стрелки одного шага проигрываются вместе)."""
+    return {"type": t, "x": round(x, 3), "y": round(y, 3), "x2": round(x2, 3), "y2": round(y2, 3), "step": step}
 
 
 def rondo(outside=4, inside=2, field="grid"):
@@ -36,7 +37,7 @@ def rondo(outside=4, inside=2, field="grid"):
     items.append(_p("ball", pts[0][0] + 0.04, pts[0][1] + 0.03))
     items.append(_a("arrow_pass", *pts[0], *pts[1 % outside]))
     if outside > 2:
-        items.append(_a("arrow_pass", *pts[1], *pts[outside // 2 + 1 if outside > 3 else 2]))
+        items.append(_a("arrow_pass", *pts[1], *pts[outside // 2 + 1 if outside > 3 else 2], step=2))
     return {"field": field, "items": items}
 
 
@@ -49,7 +50,7 @@ def lines(pairs=2, field="grid", dribble=False):
         items += [_p("player_a", 0.1, y), _p("player_a", 0.04, y), _p("player_b", 0.9, y), _p("player_b", 0.96, y)]
         items.append(_p("ball", 0.15, y + 0.04))
         items.append(_a("arrow_dribble" if dribble else "arrow_pass", 0.16, y, 0.84, y))
-        items.append(_a("arrow_run", 0.1, y + 0.06, 0.85, y + 0.06))
+        items.append(_a("arrow_run", 0.1, y, 0.85, y + 0.06, step=2))
     return {"field": field, "items": items}
 
 
@@ -96,8 +97,8 @@ def finishing(shooters=2, server=True, defender=False):
     for i in range(shooters):
         x = 0.35 + 0.3 * i / max(shooters - 1, 1) if shooters > 1 else 0.5
         items.append(_p("player_a", x, 0.62))
-        items.append(_a("arrow_dribble", x, 0.6, x + (0.05 if x < 0.5 else -0.05), 0.4))
-        items.append(_a("arrow_pass", x + (0.05 if x < 0.5 else -0.05), 0.38, 0.5, 0.05))
+        items.append(_a("arrow_dribble", x, 0.62, x + (0.05 if x < 0.5 else -0.05), 0.4, step=2))
+        items.append(_a("arrow_pass", x + (0.05 if x < 0.5 else -0.05), 0.4, 0.5, 0.05, step=3))
     if server:
         items += [_p("neutral", 0.85, 0.4, "П"), _p("ball", 0.88, 0.43)]
         items.append(_a("arrow_pass", 0.84, 0.4, 0.62, 0.4))
@@ -139,8 +140,8 @@ def triangle(field="grid"):
     pts = [(0.5, 0.15), (0.15, 0.8), (0.85, 0.8), (0.5, 0.55)]
     items = [_p("cone", x, y) for x, y in pts[:3]]
     items += [_p("player_a", x, y + 0.04) for x, y in pts[:3]]
-    items += [_p("ball", 0.53, 0.2), _a("arrow_pass", 0.5, 0.18, 0.17, 0.76),
-              _a("arrow_pass", 0.17, 0.78, 0.83, 0.78), _a("arrow_run", 0.5, 0.2, 0.15, 0.75)]
+    items += [_p("ball", 0.53, 0.2), _a("arrow_pass", 0.5, 0.19, 0.15, 0.84),
+              _a("arrow_run", 0.5, 0.19, 0.15, 0.7, step=2), _a("arrow_pass", 0.15, 0.84, 0.85, 0.84, step=2)]
     return {"field": field, "items": items}
 
 
@@ -151,7 +152,8 @@ def wave_attack(attackers=3, defenders=2):
         items.append(_p("player_a", 0.2 + 0.6 * i / max(attackers - 1, 1), 0.75))
     for i in range(defenders):
         items.append(_p("player_b", 0.35 + 0.3 * i / max(defenders - 1, 1), 0.38))
-    items += [_p("ball", 0.5, 0.7), _a("arrow_pass", 0.5, 0.73, 0.22, 0.6), _a("arrow_run", 0.8, 0.73, 0.75, 0.25)]
+    items += [_p("ball", 0.5, 0.7), _a("arrow_pass", 0.5, 0.73, 0.22, 0.6),
+              _a("arrow_run", 0.8, 0.75, 0.75, 0.25, step=2), _a("arrow_pass", 0.22, 0.6, 0.72, 0.28, step=2)]
     return {"field": "half", "items": items}
 
 
@@ -173,8 +175,8 @@ def defending_shape(defenders=4):
         items.append(_p("player_b", 0.15 + 0.7 * i / max(defenders - 1, 1), 0.72))
     for i in range(defenders + 1):
         items.append(_p("player_a", 0.1 + 0.8 * i / defenders, 0.35))
-    items += [_p("ball", 0.14, 0.38), _a("arrow_pass", 0.1, 0.36, 0.3, 0.36),
-              _a("arrow_run", 0.15, 0.72, 0.3, 0.62), _a("arrow_run", 0.38, 0.72, 0.42, 0.68)]
+    items += [_p("ball", 0.14, 0.38), _a("arrow_pass", 0.1, 0.35, 0.3, 0.35),
+              _a("arrow_run", 0.15, 0.72, 0.3, 0.62, step=2), _a("arrow_run", 0.38, 0.72, 0.42, 0.68, step=2)]
     return {"field": "half", "items": items}
 
 

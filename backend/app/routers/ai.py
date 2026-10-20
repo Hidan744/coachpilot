@@ -3,7 +3,7 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai import planner, report
+from app.ai import drills_import, planner, report
 from app.ai.providers import LLMProvider, build_provider
 from app.config import get_settings
 from app.db import get_db
@@ -46,6 +46,16 @@ async def report_structure(
         return await report.structure_report(db, provider, user.id, body)
     except LookupError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+
+
+@router.post("/drills/parse", response_model=drills_import.ParseOut)
+async def drills_parse(
+    body: drills_import.ParseRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    provider: LLMProvider = Depends(get_provider),
+) -> drills_import.ParseOut:
+    return await drills_import.parse_drills(db, provider, user.id, body)
 
 
 @router.get("/quota")

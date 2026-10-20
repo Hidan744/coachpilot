@@ -79,3 +79,10 @@ flutter build web --release --no-web-resources-cdn --dart-define=DEMO_ONLY=true
 ```
 Папку `build/web` можно раздать любым статическим хостингом (Caddy, Nginx, Yandex Object Storage).
 В обычной сборке тот же режим доступен по кнопке «Попробовать без регистрации» на экране входа.
+
+## Web-версия на GitHub Pages
+
+Workflow `.github/workflows/pages.yml` при каждом пуше в `main` собирает демо-версию и публикует её
+по адресу `https://<владелец>.github.io/coachpilot/`. Один раз включите в настройках репозитория:
+**Settings → Pages → Build and deployment → Source: GitHub Actions**.
+GitHub Pages для приватного репозитория доступен на платных тарифах GitHub; на бесплатном репозиторий должен быть публичным.

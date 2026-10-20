@@ -273,3 +273,26 @@ async def test_report_fallback_and_unknown_session(client):
         assert r.status_code == 404
     finally:
         app.dependency_overrides.pop(get_provider, None)
+
+
+async def test_drills_parse_ai_and_fallback(client, provider):
+    h, _ = await make_user(client)
+    text = "Квадрат 4 на 2\nЧетверо держат мяч\nДвое отбирают\n\nУдары после обводки\nОбвести стойку и ударить"
+    out = (await client.post("/ai/drills/parse", headers=h, json={"text": text})).json()
+    assert out["source"] == "ai"
+    assert [d["title"] for d in out["drills"]] == ["Квадрат 4 на 2", "Удары после обводки"]
+    assert out["drills"][0]["steps"] == ["Четверо держат мяч", "Двое отбирают"]
+    assert out["drills"][0]["source"] == "user"
+
+    # модель вернула мусор и недопустимые значения — категория и поля нормализуются
+    provider.scripted = [json.dumps({"drills": [{"title": "Рывки", "category": "unknown", "steps": ["Старт"],
+                                                  "duration_min": 500, "equipment": ["balls", "laser"],
+                                                  "coaching_points": ["Гарантирует рост скорости",
+                                                                      "Наклон корпуса"]}]})]
+    d = (await client.post("/ai/drills/parse", headers=h, json={"text": text})).json()["drills"][0]
+    assert d["category"] == "technique" and d["duration_min"] == 120 and d["equipment"] == ["balls"]
+    assert d["coaching_points"] == ["Наклон корпуса"]
+
+    provider.scripted = ["не json"]
+    out = (await client.post("/ai/drills/parse", headers=h, json={"text": text})).json()
+    assert out["source"] == "manual" and out["drills"] == [] and out["warnings"]

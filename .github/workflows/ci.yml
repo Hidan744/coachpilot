@@ -136,7 +136,8 @@ jobs:
           mkdir -p /tmp/shots
           npm install playwright@1.56.1
           npx playwright install --with-deps chromium
-          for f in smoke_stage2 smoke_stage3 smoke_stage4 smoke_stage5 smoke_stage6_7; do node $f.mjs; done
+          python3 make_fixtures.py /tmp/sostav.docx
+          for f in smoke_stage2 smoke_stage3 smoke_stage4 smoke_stage5 smoke_stage6_7 smoke_features2; do DOCX=/tmp/sostav.docx node $f.mjs; done
       - if: always()
         uses: actions/upload-artifact@v4
         with:

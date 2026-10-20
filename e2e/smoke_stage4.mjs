@@ -26,7 +26,7 @@ try {
 
   // Своё упражнение со схемой
   await tap(page, 'Все', { exact: true });
-  await tap(page, 'Своё');
+  await tap(page, 'Своё упражнение');
   await fill(page, 'Название', 'Квадрат 3×1 у ворот');
   await tap(page, 'Нарисовать схему');
   await see(page, 'Выбор и перемещение');

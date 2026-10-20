@@ -106,6 +106,8 @@ class SchemeItem(BaseModel):
     x2: float | None = Field(default=None, ge=-0.1, le=1.1)
     y2: float | None = Field(default=None, ge=-0.1, le=1.1)
     label: str | None = Field(default=None, max_length=20)
+    # Шаг анимации для стрелок движения: стрелки одного шага проигрываются одновременно.
+    step: int | None = Field(default=None, ge=1, le=20)
 
 
 class Scheme(BaseModel):

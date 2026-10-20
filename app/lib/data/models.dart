@@ -190,9 +190,16 @@ class SchemeItem {
   final double? x2, y2;
   final String? label;
 
-  const SchemeItem({required this.type, required this.x, required this.y, this.x2, this.y2, this.label});
+  /// Шаг анимации для стрелок: стрелки одного шага проигрываются одновременно.
+  final int? step;
+
+  const SchemeItem({required this.type, required this.x, required this.y, this.x2, this.y2, this.label, this.step});
 
   bool get isArrow => type.startsWith('arrow_') || type == 'zone';
+  bool get isMovement => type.startsWith('arrow_');
+  bool get isPlayer => const {'player_a', 'player_b', 'neutral', 'goalkeeper'}.contains(type);
+
+  int get stepOrFirst => step ?? 1;
 
   factory SchemeItem.fromJson(Json j) => SchemeItem(
         type: j['type'],
@@ -201,6 +208,7 @@ class SchemeItem {
         x2: (j['x2'] as num?)?.toDouble(),
         y2: (j['y2'] as num?)?.toDouble(),
         label: j['label'],
+        step: (j['step'] as num?)?.toInt(),
       );
 
   Json toJson() => {
@@ -210,6 +218,7 @@ class SchemeItem {
         if (x2 != null) 'x2': x2,
         if (y2 != null) 'y2': y2,
         if (label != null) 'label': label,
+        if (step != null) 'step': step,
       };
 
   SchemeItem moved(double dx, double dy) => SchemeItem(
@@ -219,7 +228,10 @@ class SchemeItem {
         x2: x2 == null ? null : x2! + dx,
         y2: y2 == null ? null : y2! + dy,
         label: label,
+        step: step,
       );
+
+  SchemeItem withStep(int? s) => SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: label, step: s);
 }
 
 class Scheme {
@@ -234,6 +246,9 @@ class Scheme {
       );
 
   Json toJson() => {'field': field, 'items': items.map((e) => e.toJson()).toList()};
+
+  /// Номера шагов анимации по порядку (пусто — двигаться нечему).
+  List<int> get steps => (items.where((e) => e.isMovement).map((e) => e.stepOrFirst).toSet().toList()..sort());
 }
 
 class Drill implements Entity {
