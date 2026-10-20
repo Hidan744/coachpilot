@@ -210,6 +210,7 @@ class SessionReportData(BaseModel):
     ai_suggestions: list[str] = StrList
     coach_confirmed: bool = False
     confirmed_at: datetime | None = None
+    rpe: int | None = Field(default=None, ge=1, le=10)
 
 
 class PlayerAssessmentData(BaseModel):
@@ -263,9 +264,21 @@ class PlanItem(BaseModel):
     done: bool = False
 
 
+class PlanTarget(BaseModel):
+    """Показатель программы: сейчас → цель, как измеряем."""
+
+    name: str = Field(min_length=1, max_length=100)
+    current: float | None = Field(default=None, ge=-1000, le=100000)
+    target: float | None = Field(default=None, ge=-1000, le=100000)
+    unit: str = Field(default="", max_length=20)
+    measure: str = Field(default="", max_length=500)
+    comment: str = Field(default="", max_length=1000)
+    priority: Literal["high", "medium", "low"] = "medium"
+
+
 class DevelopmentPlanData(BaseModel):
     player_id: uuid.UUID
-    period: Literal["week", "month", "season"]
+    period: Literal["week", "month", "season", "cycle4", "cycle6"]
     title: str = Field(min_length=1, max_length=150)
     starts_on: str | None = DateStr
     ends_on: str | None = DateStr
@@ -273,6 +286,8 @@ class DevelopmentPlanData(BaseModel):
     items: list[PlanItem] = Field(default_factory=list, max_length=60)
     comment: str = TextStr
     shared: bool = True
+    key_goal: str = Field(default="", max_length=1000)
+    targets: list[PlanTarget] = Field(default_factory=list, max_length=12)
 
 
 class TacticBoardData(BaseModel):
@@ -292,6 +307,39 @@ class ParentNoteData(BaseModel):
     shared: bool = True
 
 
+class MatchStatData(BaseModel):
+    match_id: uuid.UUID
+    player_id: uuid.UUID
+    started: bool = False
+    minutes: int = Field(default=0, ge=0, le=150)
+    rating: float | None = Field(default=None, ge=1, le=10)
+    stats: dict[str, float] = Field(default_factory=dict, max_length=40)
+
+    @field_validator("stats")
+    @classmethod
+    def _stats(cls, v: dict[str, float]) -> dict[str, float]:
+        for k, x in v.items():
+            if len(k) > 40 or x < 0 or x > 9999:
+                raise ValueError("bad stat")
+        return v
+
+
+class PhysicalTestData(BaseModel):
+    player_id: uuid.UUID
+    tested_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    results: dict[str, float] = Field(default_factory=dict, max_length=30)
+    notes: str = TextStr
+
+
+class StaffData(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: Literal["head", "assistant", "goalkeeper", "fitness", "doctor", "analyst", "other"]
+    phone: str = Field(default="", max_length=30)
+    email: str = Field(default="", max_length=120)
+    team_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+    notes: str = TextStr
+
+
 class ShareOut(BaseModel):
     token: str
     url: str
@@ -303,6 +351,7 @@ EntityName = Literal[
     "teams", "players", "drills", "favorites", "training_sessions", "attendance",
     "session_notes", "session_reports", "player_assessments",
     "matches", "schedule_slots", "development_plans", "tactic_boards", "parent_notes",
+    "match_stats", "physical_tests", "staff",
 ]
 
 

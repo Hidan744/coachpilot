@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/parent_report.dart';
+import '../../../core/performance.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../../sync/api_client.dart';
 import '../../theme.dart';
+import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
 
 final devPlansProvider = StreamProvider.family<List<DevelopmentPlan>, String>(
@@ -79,6 +81,12 @@ class DevelopmentSection extends ConsumerWidget {
                 ]),
                 const SizedBox(height: 6),
                 Text(p.title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                if (p.keyGoal.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Цель: ${p.keyGoal}', style: t.textTheme.bodySmall),
+                  ),
+                for (final x in p.targets.take(4)) TargetRow(x),
                 if (p.items.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   ClipRRect(
@@ -109,6 +117,8 @@ class DevPlanScreen extends ConsumerStatefulWidget {
 class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
   final _title = TextEditingController();
   final _comment = TextEditingController();
+  final _keyGoal = TextEditingController();
+  List<PlanTarget> _targets = [];
   final _newItem = TextEditingController();
   String _period = 'week';
   DateTime? _from, _to;
@@ -130,6 +140,8 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
         setState(() {
           _title.text = p.title;
           _comment.text = p.comment;
+          _keyGoal.text = p.keyGoal;
+          _targets = [...p.targets];
           _period = p.period;
           _from = p.startsOn;
           _to = p.endsOn;
@@ -146,6 +158,7 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
   void dispose() {
     _title.dispose();
     _comment.dispose();
+    _keyGoal.dispose();
     _newItem.dispose();
     super.dispose();
   }
@@ -186,6 +199,8 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
             items: _items,
             comment: _comment.text.trim(),
             shared: _shared,
+            keyGoal: _keyGoal.text.trim(),
+            targets: _targets,
           ),
         );
     if (mounted) popOr(context, '/team/player/${widget.playerId}');
@@ -234,15 +249,45 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
         ],
       ),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
-        SegmentedButton<String>(
-          segments: [for (final e in PlanPeriods.all.entries) ButtonSegment(value: e.key, label: Text(e.value))],
-          selected: {_period},
-          onSelectionChanged: (s) => _setPeriod(s.first),
-        ),
+        Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
+          for (final e in PlanPeriods.all.entries)
+            ChoiceChip(label: Text(e.value), selected: _period == e.key, onSelected: (_) => _setPeriod(e.key)),
+        ]),
         const SizedBox(height: 8),
         Text(_range(_from, _to), style: t.textTheme.bodySmall, textAlign: TextAlign.center),
         const SizedBox(height: 12),
         TextField(controller: _title, decoration: const InputDecoration(labelText: 'Название (например, «Игра левой ногой»)')),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _keyGoal,
+          minLines: 1,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Ключевая цель (например, «Быстрее на первых метрах»)'),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: Text('Показатели: сейчас → цель', style: t.textTheme.titleMedium)),
+          TextButton.icon(
+            onPressed: () async {
+              final x = await editTarget(context, ref, widget.playerId);
+              if (x != null) setState(() => _targets.add(x));
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Показатель'),
+          ),
+        ]),
+        if (_targets.isEmpty)
+          Text('Например: бег 10 м 1,92 → 1,80 с; точных передач за игру 70% → 80%. Контрольные замеры — в конце цикла.',
+              style: t.textTheme.bodySmall),
+        for (var i = 0; i < _targets.length; i++)
+          InkWell(
+            onTap: () async {
+              final x = await editTarget(context, ref, widget.playerId, initial: _targets[i]);
+              if (x == null) return;
+              setState(() => x.name.isEmpty ? _targets.removeAt(i) : _targets[i] = x);
+            },
+            child: TargetRow(_targets[i], detailed: true),
+          ),
         const SizedBox(height: 16),
         Text('Над чем работаем', style: t.textTheme.labelLarge),
         const SizedBox(height: 8),
@@ -546,4 +591,140 @@ Future<void> showParentNoteForm(BuildContext context, WidgetRef ref, String play
       ),
     );
   }
+}
+
+
+/// Показатель программы: название, приоритет, «сейчас → цель» и полоса прогресса.
+class TargetRow extends StatelessWidget {
+  const TargetRow(this.t, {super.key, this.detailed = false});
+
+  final PlanTarget t;
+  final bool detailed;
+
+  String _n(double? v) => v == null ? '—' : (v == v.roundToDouble() ? v.round().toString() : v.toString().replaceAll('.', ','));
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (t.priority) {
+      'high' => AppColors.red,
+      'low' => AppColors.good,
+      _ => AppColors.warn,
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(t.name, style: const TextStyle(fontWeight: FontWeight.w700))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(border: Border.all(color: color), borderRadius: BorderRadius.circular(6)),
+            child: Text(PlanTarget.priorities[t.priority] ?? '', style: TextStyle(fontSize: 11, color: color)),
+          ),
+        ]),
+        const SizedBox(height: 2),
+        Text(
+          'Сейчас: ${_n(t.current)} · Цель: ${_n(t.target)} ${t.unit}${t.gap == null ? '' : ' · разрыв ${_n(double.parse(t.gap!.toStringAsFixed(2)))}'}',
+          style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 4),
+        TargetBar(progress: t.progress, height: 7),
+        if (detailed && t.measure.isNotEmpty)
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text('Как измеряем: ${t.measure}', style: const TextStyle(fontSize: 12))),
+        if (detailed && t.comment.isNotEmpty)
+          Padding(padding: const EdgeInsets.only(top: 2), child: Text('Комментарий: ${t.comment}', style: const TextStyle(fontSize: 12))),
+      ]),
+    );
+  }
+}
+
+/// Диалог показателя. Возвращает null при отмене и показатель с пустым названием — при удалении.
+Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playerId, {PlanTarget? initial}) async {
+  final name = TextEditingController(text: initial?.name);
+  final cur = TextEditingController(text: initial?.current?.toString().replaceAll('.', ','));
+  final tgt = TextEditingController(text: initial?.target?.toString().replaceAll('.', ','));
+  final unit = TextEditingController(text: initial?.unit);
+  final measure = TextEditingController(text: initial?.measure);
+  final comment = TextEditingController(text: initial?.comment);
+  var priority = initial?.priority ?? 'medium';
+  final tests = (await ref.read(repoProvider).list(Entities.physicalTests, PhysicalTest.fromJson))
+      .where((t) => t.playerId == playerId)
+      .toList()
+    ..sort((a, b) => a.testedOn.compareTo(b.testedOn));
+  if (!context.mounted) return null;
+  double? parse(String s) => double.tryParse(s.replaceAll(',', '.').trim());
+  final res = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewInsetsOf(c).bottom),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Показатель', style: Theme.of(c).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            if (initial == null)
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final m in physicalMetrics)
+                  ActionChip(
+                    label: Text(m.label),
+                    onPressed: () => set(() {
+                      name.text = m.label;
+                      unit.text = m.unit;
+                      final last = tests.where((t) => t.results[m.key] != null).lastOrNull;
+                      if (last != null) cur.text = last.results[m.key].toString().replaceAll('.', ',');
+                      measure.text = m.hint.isEmpty ? 'Контрольный тест в конце цикла' : m.hint;
+                    }),
+                  ),
+                for (final x in const ['Точность передач, %', 'Удары в створ, %', 'Выигранные единоборства, %'])
+                  ActionChip(
+                    label: Text(x),
+                    onPressed: () => set(() {
+                      name.text = x.split(',').first;
+                      unit.text = '%';
+                      measure.text = 'Статистика матчей за цикл';
+                    }),
+                  ),
+              ]),
+            const SizedBox(height: 8),
+            TextField(controller: name, decoration: const InputDecoration(labelText: 'Название')),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: TextField(controller: cur, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Сейчас'))),
+              const SizedBox(width: 8),
+              Expanded(child: TextField(controller: tgt, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Цель'))),
+              const SizedBox(width: 8),
+              SizedBox(width: 70, child: TextField(controller: unit, decoration: const InputDecoration(labelText: 'Ед.'))),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, children: [
+              for (final e in PlanTarget.priorities.entries)
+                ChoiceChip(label: Text(e.value), selected: priority == e.key, onSelected: (_) => set(() => priority = e.key)),
+            ]),
+            const SizedBox(height: 8),
+            TextField(controller: measure, decoration: const InputDecoration(labelText: 'Как измеряем')),
+            const SizedBox(height: 8),
+            TextField(controller: comment, decoration: const InputDecoration(labelText: 'Комментарий')),
+            const SizedBox(height: 12),
+            Row(children: [
+              if (initial != null) TextButton(onPressed: () => Navigator.pop(c, 'delete'), child: const Text('Удалить')),
+              const Spacer(),
+              FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: const Text('Готово')),
+            ]),
+          ]),
+        ),
+      ),
+    ),
+  );
+  if (res == 'delete') return const PlanTarget(name: '');
+  if (res != 'save' || name.text.trim().isEmpty) return null;
+  return PlanTarget(
+    name: name.text.trim(),
+    current: parse(cur.text),
+    target: parse(tgt.text),
+    unit: unit.text.trim(),
+    measure: measure.text.trim(),
+    comment: comment.text.trim(),
+    priority: priority,
+  );
 }

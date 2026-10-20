@@ -13,6 +13,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -277,6 +278,8 @@ class SessionReport(SyncMixin, Base):
     ai_suggestions: Mapped[list] = mapped_column(JSONB, default=list)
     coach_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Субъективная нагрузка занятия (RPE 1–10): нагрузка = RPE × минуты.
+    rpe: Mapped[int | None] = mapped_column(Integer)
 
 
 class PlayerAssessment(SyncMixin, Base):
@@ -340,6 +343,9 @@ class DevelopmentPlan(SyncMixin, Base):
     items: Mapped[list] = mapped_column(JSONB, default=list)  # [{text, kind: goal|task, done}]
     comment: Mapped[str] = mapped_column(Text, default="")
     shared: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Программа на 4–6 недель: ключевая цель и показатели «сейчас → цель».
+    key_goal: Mapped[str] = mapped_column(Text, default="", server_default="")
+    targets: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class TacticBoard(SyncMixin, Base):
@@ -377,3 +383,40 @@ class PlayerShare(Base):
     player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = _now_col()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MatchStat(SyncMixin, Base):
+    """Статистика игрока в матче. id на клиенте = uuid5(match_id, player_id)."""
+
+    __tablename__ = "match_stats"
+
+    match_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"))
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    started: Mapped[bool] = mapped_column(Boolean, default=False)
+    minutes: Mapped[int] = mapped_column(Integer, default=0)
+    rating: Mapped[float | None] = mapped_column(Float)
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)  # голы, передачи, отборы…
+
+
+class PhysicalTest(SyncMixin, Base):
+    """Тестирование ОФП игрока: результаты по тестам на дату."""
+
+    __tablename__ = "physical_tests"
+
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    tested_on: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    results: Mapped[dict] = mapped_column(JSONB, default=dict)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class StaffMember(SyncMixin, Base):
+    """Тренерский штаб: ассистенты, тренер вратарей, тренер по ОФП, врач."""
+
+    __tablename__ = "staff"
+
+    name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(30))
+    phone: Mapped[str] = mapped_column(String(30), default="")
+    email: Mapped[str] = mapped_column(String(120), default="")
+    team_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")

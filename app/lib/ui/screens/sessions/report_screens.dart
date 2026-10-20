@@ -40,6 +40,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   final _observations = TextEditingController();
   final _raw = TextEditingController();
   int? _rating;
+
+  /// Нагрузка по ощущениям группы, RPE 1–10.
+  int? _rpe;
   List<String> _suggestions = [];
   String? _id;
   bool _loaded = false;
@@ -64,6 +67,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       _observations.text = r.observations;
       _raw.text = r.rawInput;
       _rating = r.rating;
+      _rpe = r.rpe;
       _suggestions = [...r.aiSuggestions];
     });
   }
@@ -80,6 +84,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       aiSuggestions: _suggestions,
       coachConfirmed: confirmed,
       confirmedAt: confirmed ? DateTime.now() : null,
+      rpe: _rpe,
     );
     await ref.read(repoProvider).put(Entities.reports, report);
     if (confirmed) {
@@ -164,6 +169,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 onPressed: () => setState(() => _rating = i),
                 icon: Icon(i <= (_rating ?? 0) ? Icons.star : Icons.star_border, color: Colors.amber.shade700),
               ),
+          ]),
+          const SizedBox(height: 8),
+          Text('Нагрузка по ощущениям (RPE): ${_rpe == null ? 'не указана' : '$_rpe из 10'}', style: t.textTheme.titleSmall),
+          Text('1 — очень легко, 5 — тяжело, 10 — максимально. Нужна для графика нагрузки команды.',
+              style: t.textTheme.bodySmall),
+          Wrap(spacing: 4, runSpacing: 4, children: [
+            for (var i = 1; i <= 10; i++)
+              ChoiceChip(label: Text('$i'), selected: _rpe == i, onSelected: (v) => setState(() => _rpe = v ? i : null)),
           ]),
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -338,6 +351,11 @@ class SessionSummaryScreen extends ConsumerWidget {
                   for (var i = 1; i <= 5; i++)
                     Icon(i <= report.rating! ? Icons.star : Icons.star_border, color: Colors.amber.shade700, size: 22),
                 ]),
+              ),
+            if (report.rpe != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('Нагрузка: RPE ${report.rpe} из 10', style: t.textTheme.titleSmall),
               ),
             section('Что получилось', report.wentWell),
             section('Что улучшить', report.toImprove),

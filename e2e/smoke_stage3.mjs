@@ -30,6 +30,12 @@ try {
   await tap(page, '4', { exact: true });
   await fill(page, 'Комментарий (наблюдение)', 'Хорошо открывается');
   await tap(page, 'Сохранить', { exact: true });
+  // Оценки — ниже на вкладке «Обзор»: прокручиваем.
+  await page.mouse.move(200, 600);
+  for (let i = 0; i < 6; i++) {
+    await page.mouse.wheel(0, 500);
+    await page.waitForTimeout(250);
+  }
   await see(page, '4/5');
   await shot(page, 's3-02-player');
   step('оценка навыка сохранена');

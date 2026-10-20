@@ -163,3 +163,22 @@ export async function rawPointer(page, fn) {
     await page.evaluate(() => document.querySelectorAll('flt-semantics').forEach((e) => { e.style.pointerEvents = ''; }));
   }
 }
+
+/** Точка внутри элемента с подписью [label] (поле схемы, доска): x, y — доли ширины и высоты. */
+export async function pointIn(page, label, x, y) {
+  const r = await page.evaluate((label) => {
+    const nodes = [...document.querySelectorAll('flt-semantics, [aria-label]')].filter((e) =>
+      ((e.getAttribute('aria-label') || '') + (e.textContent || '')).includes(label));
+    const inner = nodes.filter((e) => !nodes.some((o) => o !== e && e.contains(o)));
+    const b = inner[0].getBoundingClientRect();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  }, label);
+  return [r.x + r.w * x, r.y + r.h * y];
+}
+
+/** Касание поля схемы в точке (доли ширины и высоты). */
+export async function tapField(page, x, y, label = 'Поле схемы') {
+  const [px, py] = await pointIn(page, label, x, y);
+  await rawPointer(page, () => page.mouse.click(px, py));
+  await page.waitForTimeout(250);
+}

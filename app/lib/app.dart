@@ -8,6 +8,7 @@ import 'ui/screens/auth/auth_screens.dart';
 import 'ui/screens/auth/onboarding_screen.dart';
 import 'ui/screens/calendar/calendar_screen.dart';
 import 'ui/screens/calendar/import_matches_screen.dart';
+import 'ui/screens/calendar/match_stats_screen.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
 import 'ui/screens/profile/profile_screen.dart';
@@ -16,6 +17,8 @@ import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
 import 'ui/screens/tactics/tactics_screens.dart';
 import 'ui/screens/team/player_development.dart';
+import 'ui/screens/team/player_profile.dart';
+import 'ui/screens/team/progress_report.dart';
 import 'ui/screens/team/team_screens.dart';
 import 'ui/theme.dart';
 
@@ -78,6 +81,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                   matchId: s.pathParameters['id'] == 'new' ? null : s.pathParameters['id'],
                   day: DateTime.tryParse(s.uri.queryParameters['day'] ?? ''),
                 ),
+                routes: [
+                  GoRoute(path: 'stats', builder: (_, s) => MatchStatsScreen(matchId: s.pathParameters['id']!)),
+                ],
               ),
               GoRoute(path: 'import', builder: (_, _) => const ImportMatchesScreen()),
             ]),
@@ -102,6 +108,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),
               GoRoute(path: 'edit/:id', builder: (_, s) => TeamEditScreen(teamId: s.pathParameters['id'])),
               GoRoute(path: 'player/:id', builder: (_, s) => PlayerScreen(playerId: s.pathParameters['id']!), routes: [
+                GoRoute(
+                  path: 'test/:testId',
+                  builder: (_, s) => PhysicalTestScreen(
+                    playerId: s.pathParameters['id']!,
+                    testId: s.pathParameters['testId'] == 'new' ? null : s.pathParameters['testId'],
+                  ),
+                ),
+                GoRoute(path: 'report', builder: (_, s) => ProgressReportScreen(playerId: s.pathParameters['id']!)),
                 GoRoute(
                   path: 'plan/:planId',
                   builder: (_, s) => DevPlanScreen(

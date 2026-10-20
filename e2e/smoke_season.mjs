@@ -145,6 +145,7 @@ try {
   // 6. Индивидуальный план развития
   await tap(page, 'Команда');
   await tap(page, 'Ваня Сидоров');
+  await tap(page, 'Развитие', { exact: true });
   await tap(page, 'План', { exact: true });
   await see(page, 'Над чем работаем');
   await fill(page, 'Название', 'Игра левой ногой');
@@ -162,6 +163,7 @@ try {
   step('план развития игрока');
 
   // 7. Сообщение родителям
+  await tap(page, 'Родителям', { exact: true });
   await tap(page, 'Написать');
   await tap(page, 'Питание');
   await fill(page, 'Текст', 'Завтрак за 2–3 часа до игры, больше воды');

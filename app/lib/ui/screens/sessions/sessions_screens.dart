@@ -584,6 +584,7 @@ class _PlanEditor extends ConsumerWidget {
               style: const TextStyle(color: AppColors.warn),
             ),
           ),
+        if (s.blocks.isNotEmpty) TimelineBar(blocks: s.blocks),
         if (s.blocks.isEmpty)
           const Padding(padding: EdgeInsets.all(16), child: Text('Добавьте упражнения из библиотеки или пустые блоки.')),
         ReorderableListView(
@@ -955,4 +956,76 @@ Future<void> trackPlanSaved(WidgetRef ref, TrainingSession s) async {
     'edited': ?edited,
   });
   if (raw != null) await db.deleteKv('ai_original:${s.id}');
+}
+
+
+/// Распределение времени занятия: цветная полоса по блокам и таймлайн «00:10 Техника 20 мин».
+class TimelineBar extends StatelessWidget {
+  const TimelineBar({super.key, required this.blocks});
+
+  final List<TrainingBlock> blocks;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = blocks.fold<int>(0, (a, b) => a + b.durationMin);
+    if (total == 0) return const SizedBox.shrink();
+    var start = 0;
+    final rows = <(String, TrainingBlock)>[];
+    for (final b in blocks) {
+      rows.add(('${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}', b));
+      start += b.durationMin;
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Semantics(
+          label: 'Распределение времени: ${[for (final b in blocks) '${b.title} ${b.durationMin} мин'].join(', ')}',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 26,
+              child: Row(children: [
+                for (final b in blocks)
+                  Expanded(
+                    flex: b.durationMin,
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 2),
+                      color: phaseColors[b.phase],
+                      alignment: Alignment.center,
+                      child: b.durationMin * 100 / total >= 9
+                          ? Text("${b.durationMin}'", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 12))
+                          : null,
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final (at, b) in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              SizedBox(width: 48, child: Text(at, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()], color: AppColors.textMuted))),
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: phaseColors[b.phase], shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Expanded(child: Text(b.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              SizedBox(
+                width: 90,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: b.durationMin / total,
+                    minHeight: 5,
+                    color: phaseColors[b.phase],
+                    backgroundColor: AppColors.outline,
+                  ),
+                ),
+              ),
+              SizedBox(width: 52, child: Text('${b.durationMin} мин', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12))),
+            ]),
+          ),
+      ]),
+    );
+  }
 }

@@ -1,4 +1,4 @@
-import { launch, fill, tap, see, shot, step, registerWithTeam, apiLogin, API, rawPointer } from './lib.mjs';
+import { tapField, launch, fill, tap, see, shot, step, registerWithTeam, apiLogin, API, rawPointer } from './lib.mjs';
 
 const { browser, context, page } = await launch();
 try {
@@ -30,19 +30,16 @@ try {
   await fill(page, 'Название', 'Квадрат 3×1 у ворот');
   await tap(page, 'Нарисовать схему');
   await see(page, 'Выбор и перемещение');
+  // Два игрока, мяч у первого; движение: пас партнёру касанием.
   await tap(page, 'Игрок (красные)');
-  await rawPointer(page, async () => {
-    await page.mouse.click(120, 330);
-    await page.mouse.click(280, 330);
-  });
-  await tap(page, 'Пас');
-  await rawPointer(page, async () => {
-    await page.mouse.move(125, 340);
-    await page.mouse.down();
-    await page.mouse.move(200, 342, { steps: 8 });
-    await page.mouse.move(272, 340, { steps: 8 });
-    await page.mouse.up();
-  });
+  await tapField(page, 0.3, 0.6);
+  await tapField(page, 0.7, 0.6);
+  await tap(page, 'Мяч');
+  await tapField(page, 0.3, 0.6);
+  await tap(page, 'Движение игрока');
+  await tapField(page, 0.3, 0.6);
+  await tap(page, 'Пас', { exact: true });
+  await tapField(page, 0.7, 0.6);
   await shot(page, 's4-03-scheme-editor');
   await tap(page, 'Готово', { exact: true });
   await fill(page, 'Как выполнять (шаги)', 'Пас партнёру\nОткрывание под пас');
@@ -57,7 +54,14 @@ try {
   const own = recs.find((r) => r.entity === 'drills' && r.data.title === 'Квадрат 3×1 у ворот');
   if (!own) throw new Error('упражнение не на сервере');
   const types = own.data.scheme.items.map((i) => i.type).sort().join(',');
-  if (types !== 'arrow_pass,player_a,player_a') throw new Error('схема на сервере: ' + types);
+  if (types !== 'arrow_pass,ball,player_a,player_a') throw new Error('схема на сервере: ' + types);
+  // Связи сохраняются на сервере: пас знает, кто и кому, мяч — чей.
+  const items = own.data.scheme.items;
+  const pass = items.find((i) => i.type === 'arrow_pass'), ball = items.find((i) => i.type === 'ball');
+  const [a, b] = items.filter((i) => i.type === 'player_a');
+  if (!pass.actor || pass.actor !== a.id || pass.target !== b.id || ball.holder !== a.id) {
+    throw new Error('связи схемы потеряны: ' + JSON.stringify(items));
+  }
   if (!recs.some((r) => r.entity === 'favorites')) throw new Error('избранное не синхронизировано');
   step('упражнение, схема и избранное синхронизированы');
   console.log('STAGE 4 E2E: OK');

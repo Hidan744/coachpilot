@@ -6,7 +6,7 @@ from tests.test_sync import push, team, up
 
 
 async def _setup(client, headers):
-    tid, pid, sid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    tid, pid, sid, mid = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     now = datetime.now(UTC)
     res = await push(
         client, headers,
@@ -16,7 +16,7 @@ async def _setup(client, headers):
         up("training_sessions", sid, {"team_id": str(tid), "title": "Квадраты", "duration_min": 60,
                                       "status": "done", "started_at": now.isoformat()}),
         up("attendance", uuid.uuid4(), {"session_id": str(sid), "player_id": str(pid), "status": "present"}),
-        up("matches", uuid.uuid4(), {"team_id": str(tid), "opponent": "Зенит U16",
+        up("matches", mid, {"team_id": str(tid), "opponent": "Зенит U16",
                                      "starts_at": (now + timedelta(days=3)).isoformat(), "home": False}),
         up("schedule_slots", uuid.uuid4(), {"team_id": str(tid), "title": "Тренировка U16",
                                             "weekdays": [3, 1, 1], "start_time": "10:00", "duration_min": 120}),
@@ -25,6 +25,8 @@ async def _setup(client, headers):
             "items": [{"text": "100 передач левой", "kind": "task", "done": True},
                       {"text": "Уверенный приём <левой>", "kind": "goal"}],
             "comment": "Молодец",
+            "key_goal": "Уверенная игра левой",
+            "targets": [{"name": "Точные передачи левой", "current": 60, "target": 75, "unit": "%"}],
         }),
         up("development_plans", uuid.uuid4(), {"player_id": str(pid), "period": "season", "title": "Скрытый план",
                                                "shared": False}),
@@ -33,6 +35,8 @@ async def _setup(client, headers):
         up("parent_notes", uuid.uuid4(), {"player_id": str(pid), "category": "psychology",
                                           "text": "Только для тренера", "written_at": now.isoformat(),
                                           "shared": False}),
+        up("match_stats", uuid.uuid4(), {"match_id": str(mid), "player_id": str(pid), "minutes": 70,
+                                         "rating": 7.2, "stats": {"goals": 1, "assists": 2}}),
         up("tactic_boards", uuid.uuid4(), {"team_id": str(tid), "title": "4-3-3", "formation": "4-3-3",
                                            "scheme": {"field": "full_v", "items": [
                                                {"type": "player_a", "x": 0.5, "y": 0.9, "label": "Сидоров"},
@@ -62,6 +66,8 @@ async def test_share_page_shows_only_shared_data(client):
     assert "Завтрак за 2 часа до игры" in body and "Питание" in body
     assert "Левая нога" in body and "&lt;левой&gt;" in body
     assert "Зенит U16" in body and "пн, ср 10:00" in body
+    assert "Уверенная игра левой" in body and "сейчас 60 → цель 75 %" in body
+    assert "Игровая статистика" in body and "<b>7.2</b>" in body
     assert "Скрытый план" not in body and "Только для тренера" not in body
 
     r = await client.delete(f"/players/{pid}/share", headers=headers)

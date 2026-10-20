@@ -26,6 +26,9 @@ class Entities {
   static const devPlans = 'development_plans';
   static const boards = 'tactic_boards';
   static const parentNotes = 'parent_notes';
+  static const matchStats = 'match_stats';
+  static const physicalTests = 'physical_tests';
+  static const staff = 'staff';
 
   /// Поле-родитель для индекса parentId в локальной БД.
   static const parentField = {
@@ -41,6 +44,8 @@ class Entities {
     devPlans: 'player_id',
     boards: 'team_id',
     parentNotes: 'player_id',
+    matchStats: 'match_id',
+    physicalTests: 'player_id',
   };
 
   /// Сущности, где сервер не перезаписывает правку молча, а возвращает конфликт.
@@ -691,6 +696,9 @@ class SessionReport implements Entity {
   final bool coachConfirmed;
   final DateTime? confirmedAt;
 
+  /// Нагрузка занятия по ощущениям (RPE 1–10): нагрузка = RPE × минуты.
+  final int? rpe;
+
   SessionReport({
     required this.id,
     required this.sessionId,
@@ -702,6 +710,7 @@ class SessionReport implements Entity {
     this.aiSuggestions = const [],
     this.coachConfirmed = false,
     this.confirmedAt,
+    this.rpe,
   });
 
   factory SessionReport.fromJson(String id, Json j) => SessionReport(
@@ -715,6 +724,7 @@ class SessionReport implements Entity {
         aiSuggestions: _strList(j['ai_suggestions']),
         coachConfirmed: j['coach_confirmed'] ?? false,
         confirmedAt: _date(j['confirmed_at']),
+        rpe: j['rpe'],
       );
 
   @override
@@ -728,6 +738,7 @@ class SessionReport implements Entity {
         'ai_suggestions': aiSuggestions,
         'coach_confirmed': coachConfirmed,
         'confirmed_at': _iso(confirmedAt),
+        'rpe': rpe,
       };
 }
 
@@ -937,7 +948,58 @@ class ScheduleSlot implements Entity {
 // ---------------------------------------------------------------- развитие игрока
 
 class PlanPeriods {
-  static const all = {'week': 'Неделя', 'month': 'Месяц', 'season': 'Сезон'};
+  static const all = {'week': 'Неделя', 'cycle4': '4 недели', 'cycle6': '6 недель', 'month': 'Месяц', 'season': 'Сезон'};
+}
+
+/// Показатель программы развития: сейчас → цель, как измеряем.
+class PlanTarget {
+  final String name;
+  final double? current, target;
+  final String unit, measure, comment;
+  final String priority; // high | medium | low
+
+  const PlanTarget({
+    required this.name,
+    this.current,
+    this.target,
+    this.unit = '',
+    this.measure = '',
+    this.comment = '',
+    this.priority = 'medium',
+  });
+
+  static const priorities = {'high': 'Высокий', 'medium': 'Средний', 'low': 'Поддерживающий'};
+
+  /// Разрыв до цели (по модулю): для «меньше — лучше» цель ниже текущего.
+  double? get gap => current == null || target == null ? null : (target! - current!).abs();
+
+  /// Доля пути к цели 0..1 (от нуля шкалы); для «меньше — лучше» — отношение цели к текущему.
+  double get progress {
+    if (current == null || target == null || target == 0) return 0;
+    final lowerBetter = target! < current!;
+    final v = lowerBetter ? target! / current! : current! / target!;
+    return v.clamp(0.0, 1.0);
+  }
+
+  factory PlanTarget.fromJson(Json j) => PlanTarget(
+        name: j['name'] ?? '',
+        current: (j['current'] as num?)?.toDouble(),
+        target: (j['target'] as num?)?.toDouble(),
+        unit: j['unit'] ?? '',
+        measure: j['measure'] ?? '',
+        comment: j['comment'] ?? '',
+        priority: j['priority'] ?? 'medium',
+      );
+
+  Json toJson() => {
+        'name': name,
+        'current': current,
+        'target': target,
+        'unit': unit,
+        'measure': measure,
+        'comment': comment,
+        'priority': priority,
+      };
 }
 
 class PlanItem {
@@ -970,6 +1032,10 @@ class DevelopmentPlan implements Entity {
   /// Видно игроку и родителям по ссылке.
   final bool shared;
 
+  /// Ключевая цель программы и показатели «сейчас → цель».
+  final String keyGoal;
+  final List<PlanTarget> targets;
+
   DevelopmentPlan({
     required this.id,
     required this.playerId,
@@ -981,6 +1047,8 @@ class DevelopmentPlan implements Entity {
     this.items = const [],
     this.comment = '',
     this.shared = true,
+    this.keyGoal = '',
+    this.targets = const [],
   });
 
   int get doneCount => items.where((i) => i.done).length;
@@ -996,6 +1064,8 @@ class DevelopmentPlan implements Entity {
         items: ((j['items'] as List?) ?? []).map((e) => PlanItem.fromJson(e as Json)).toList(),
         comment: j['comment'] ?? '',
         shared: j['shared'] ?? true,
+        keyGoal: j['key_goal'] ?? '',
+        targets: ((j['targets'] as List?) ?? []).map((e) => PlanTarget.fromJson(e as Json)).toList(),
       );
 
   @override
@@ -1009,6 +1079,8 @@ class DevelopmentPlan implements Entity {
         'items': items.map((i) => i.toJson()).toList(),
         'comment': comment,
         'shared': shared,
+        'key_goal': keyGoal,
+        'targets': targets.map((t) => t.toJson()).toList(),
       };
 
   DevelopmentPlan copyWith({List<PlanItem>? items}) => DevelopmentPlan(
@@ -1022,6 +1094,8 @@ class DevelopmentPlan implements Entity {
         items: items ?? this.items,
         comment: comment,
         shared: shared,
+        keyGoal: keyGoal,
+        targets: targets,
       );
 }
 
@@ -1118,4 +1192,129 @@ class ParentNote implements Entity {
         'written_at': _iso(writtenAt),
         'shared': shared,
       };
+}
+
+// ---------------------------------------------------------------- статистика и ОФП
+
+/// Статистика игрока в матче. id = uuid5(match_id, player_id): одна запись на игрока и матч.
+class MatchStat implements Entity {
+  @override
+  final String id;
+  final String matchId, playerId;
+  final bool started;
+  final int minutes;
+  final double? rating;
+
+  /// Счётчики: goals, assists, shots, … (см. StatKeys).
+  final Map<String, double> stats;
+
+  MatchStat({
+    required this.id,
+    required this.matchId,
+    required this.playerId,
+    this.started = false,
+    this.minutes = 0,
+    this.rating,
+    this.stats = const {},
+  });
+
+  double operator [](String key) => stats[key] ?? 0;
+
+  factory MatchStat.fromJson(String id, Json j) => MatchStat(
+        id: id,
+        matchId: j['match_id'],
+        playerId: j['player_id'],
+        started: j['started'] ?? false,
+        minutes: (j['minutes'] as num?)?.toInt() ?? 0,
+        rating: (j['rating'] as num?)?.toDouble(),
+        stats: {for (final e in ((j['stats'] as Json?) ?? {}).entries) e.key: (e.value as num).toDouble()},
+      );
+
+  @override
+  Json toJson() => {
+        'match_id': matchId,
+        'player_id': playerId,
+        'started': started,
+        'minutes': minutes,
+        'rating': rating,
+        'stats': {for (final e in stats.entries) if (e.value != 0) e.key: e.value},
+      };
+
+  MatchStat copyWith({bool? started, int? minutes, Object? rating = _keepRating, Map<String, double>? stats}) => MatchStat(
+        id: id,
+        matchId: matchId,
+        playerId: playerId,
+        started: started ?? this.started,
+        minutes: minutes ?? this.minutes,
+        rating: identical(rating, _keepRating) ? this.rating : rating as double?,
+        stats: stats ?? this.stats,
+      );
+
+  static const _keepRating = Object();
+}
+
+/// Тестирование ОФП: результаты тестов на дату (см. PhysicalMetrics).
+class PhysicalTest implements Entity {
+  @override
+  final String id;
+  final String playerId;
+  final DateTime testedOn;
+  final Map<String, double> results;
+  final String notes;
+
+  PhysicalTest({required this.id, required this.playerId, required this.testedOn, this.results = const {}, this.notes = ''});
+
+  factory PhysicalTest.fromJson(String id, Json j) => PhysicalTest(
+        id: id,
+        playerId: j['player_id'],
+        testedOn: _parseDay(j['tested_on']) ?? DateTime.now(),
+        results: {for (final e in ((j['results'] as Json?) ?? {}).entries) e.key: (e.value as num).toDouble()},
+        notes: j['notes'] ?? '',
+      );
+
+  @override
+  Json toJson() => {'player_id': playerId, 'tested_on': _day(testedOn), 'results': results, 'notes': notes};
+}
+
+class StaffRoles {
+  static const all = {
+    'head': 'Главный тренер',
+    'assistant': 'Тренер-ассистент',
+    'goalkeeper': 'Тренер вратарей',
+    'fitness': 'Тренер по ОФП',
+    'doctor': 'Врач / физиотерапевт',
+    'analyst': 'Аналитик',
+    'other': 'Другое',
+  };
+}
+
+/// Член тренерского штаба.
+class StaffMember implements Entity {
+  @override
+  final String id;
+  final String name, role, phone, email, notes;
+  final List<String> teamIds;
+
+  StaffMember({
+    required this.id,
+    required this.name,
+    required this.role,
+    this.phone = '',
+    this.email = '',
+    this.teamIds = const [],
+    this.notes = '',
+  });
+
+  factory StaffMember.fromJson(String id, Json j) => StaffMember(
+        id: id,
+        name: j['name'] ?? '',
+        role: j['role'] ?? 'other',
+        phone: j['phone'] ?? '',
+        email: j['email'] ?? '',
+        teamIds: _strList(j['team_ids']),
+        notes: j['notes'] ?? '',
+      );
+
+  @override
+  Json toJson() => {'name': name, 'role': role, 'phone': phone, 'email': email, 'team_ids': teamIds, 'notes': notes};
 }

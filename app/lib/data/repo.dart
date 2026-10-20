@@ -14,6 +14,9 @@ String newId() => _uuid.v4();
 /// независимо от устройства (на сервере uuid5(session_id, str(player_id))).
 String attendanceId(String sessionId, String playerId) => _uuid.v5(sessionId, playerId);
 
+/// Детерминированный id статистики игрока в матче: одна запись на игрока и матч.
+String matchStatId(String matchId, String playerId) => _uuid.v5(matchId, 'stat:$playerId');
+
 /// Локальный репозиторий: все записи сначала пишутся в SQLite и в outbox,
 /// затем SyncEngine отправляет их на сервер.
 class Repo {
@@ -115,6 +118,9 @@ class Repo {
   Stream<List<ParentNote>> watchParentNotes(String playerId) =>
       watch(Entities.parentNotes, ParentNote.fromJson, parentId: playerId);
   Stream<List<TacticBoard>> watchBoards() => watch(Entities.boards, TacticBoard.fromJson);
+  Stream<List<MatchStat>> watchMatchStats() => watch(Entities.matchStats, MatchStat.fromJson);
+  Stream<List<PhysicalTest>> watchPhysicalTests() => watch(Entities.physicalTests, PhysicalTest.fromJson);
+  Stream<List<StaffMember>> watchStaff() => watch(Entities.staff, StaffMember.fromJson);
 
   Stream<Set<String>> watchFavoriteDrillIds() => watch(Entities.favorites, (id, j) => j['drill_id'] as String)
       .map((l) => l.toSet());

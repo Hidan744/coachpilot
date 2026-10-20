@@ -535,6 +535,8 @@ class MatchFormScreen extends ConsumerStatefulWidget {
 }
 
 class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
+  /// id нового матча фиксируется сразу: «Тактика» и «Статистика» до сохранения не плодят копии.
+  late final String _id = widget.matchId ?? newId();
   final _opponent = TextEditingController();
   final _venue = TextEditingController();
   final _competition = TextEditingController();
@@ -589,7 +591,7 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
     final team = _teamId;
     if (team == null || _opponent.text.trim().isEmpty) return null;
     return Match(
-      id: widget.matchId ?? newId(),
+      id: _id,
       teamId: team,
       opponent: _opponent.text.trim(),
       startsAt: _at,
@@ -623,6 +625,13 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
     final existing = boards.where((b) => b.matchId == m.id).firstOrNull;
     final id = existing?.id ?? await createBoard(ref, teamId: m.teamId, matchId: m.id, title: 'Матч: ${m.opponent}');
     if (mounted) context.push('/tactics/$id');
+  }
+
+  Future<void> _stats() async {
+    final m = _build();
+    if (m == null) return _save();
+    await ref.read(repoProvider).put(Entities.matches, m);
+    if (mounted) context.push('/calendar/match/${m.id}/stats');
   }
 
   Future<void> _pickDate() async {
@@ -742,6 +751,8 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
         FilledButton(onPressed: _save, child: const Text('Сохранить')),
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _tactics, icon: const Icon(Icons.draw_outlined), label: const Text('Тактика на матч')),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: _stats, icon: const Icon(Icons.query_stats), label: const Text('Статистика матча')),
       ]),
     );
   }

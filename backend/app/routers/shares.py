@@ -39,7 +39,9 @@ CATEGORY_LABELS = {
     "health": "Здоровье и восстановление",
     "behavior": "Дисциплина и поведение",
 }
-PERIOD_LABELS = {"week": "на неделю", "month": "на месяц", "season": "на сезон"}
+PERIOD_LABELS = {
+    "week": "на неделю", "month": "на месяц", "season": "на сезон", "cycle4": "на 4 недели", "cycle6": "на 6 недель",
+}
 POSITION_LABELS = {"GK": "Вратарь", "DF": "Защитник", "MF": "Полузащитник", "FW": "Нападающий"}
 SKILL_LABELS = {
     "technique": "Техника",
@@ -245,10 +247,32 @@ async def player_card(db: AsyncSession, token: str) -> dict | None:
             "recent": visits[:12],
         },
         "skills": skills,
+        "season": await _season(db, owner, player.id),
         "plans": plans,
         "notes": notes,
         "matches": matches,
         "slots": slots,
+    }
+
+
+async def _season(db: AsyncSession, owner, player_id) -> dict:
+    rows = (
+        await db.scalars(
+            select(m.MatchStat).where(
+                m.MatchStat.player_id == player_id,
+                m.MatchStat.owner_id == owner,
+                m.MatchStat.minutes > 0,
+                _alive(m.MatchStat),
+            )
+        )
+    ).all()
+    ratings = [r.rating for r in rows if r.rating is not None]
+    return {
+        "games": len(rows),
+        "minutes": sum(r.minutes for r in rows),
+        "goals": round(sum(r.stats.get("goals", 0) for r in rows)),
+        "assists": round(sum(r.stats.get("assists", 0) for r in rows)),
+        "rating": sum(ratings) / len(ratings) if ratings else None,
     }
 
 
@@ -269,6 +293,28 @@ def _iso_d(s: str | None) -> str:
         return _d(date.fromisoformat(s))
     except ValueError:
         return s
+
+
+def _num(v) -> str:
+    if v is None:
+        return "—"
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}".rstrip("0").replace(".", ",")
+
+
+def _targets(targets: list[dict]) -> str:
+    """Показатели программы: сейчас → цель и полоса прогресса."""
+    rows = ""
+    for t in targets:
+        cur, tgt = t.get("current"), t.get("target")
+        pct = 0
+        if cur and tgt:
+            pct = round(min(1.0, (tgt / cur) if tgt < cur else (cur / tgt)) * 100)
+        rows += (
+            f"<li><div class='meta'><b>{html.escape(t.get('name', ''))}</b>"
+            f"<span>сейчас {_num(cur)} → цель {_num(tgt)} {html.escape(t.get('unit', ''))}</span></div>"
+            f"<span class='bar'><i style='width:{pct}%'></i></span></li>"
+        )
+    return f"<h4>Показатели</h4><ul class='targets'>{rows}</ul>" if rows else ""
 
 
 def render_card(card: dict) -> str:
@@ -320,11 +366,22 @@ def render_card(card: dict) -> str:
 <div class="card"><h3>{e(plan.title)}</h3>
 {f'<div class="meta">{e(dates)}</div>' if dates else ''}
 {f'<div class="meta">Фокус: {e(focus)}</div>' if focus else ''}
+{f'<p><b>Ключевая цель:</b> {e(plan.key_goal)}</p>' if plan.key_goal else ''}
+{_targets(plan.targets)}
 {f'<h4>Цели</h4><ul class="check">{lst(goals)}</ul>' if goals else ''}
 {f'<h4>Задания</h4><ul class="check">{lst(tasks)}</ul>' if tasks else ''}
 {f'<p class="comment">{e(plan.comment)}</p>' if plan.comment else ''}
 </div></section>"""
         )
+
+    season = card.get("season")
+    if season and season["games"]:
+        cells = [("Матчи", season["games"]), ("Минуты", season["minutes"]), ("Голы", season["goals"]),
+                 ("Голевые", season["assists"])]
+        if season["rating"] is not None:
+            cells.append(("Ср. оценка", f"{season['rating']:.1f}"))
+        items = "".join(f"<div><b>{v}</b><span>{k}</span></div>" for k, v in cells)
+        parts.append(f"<section><h2>Игровая статистика</h2><div class='grid'>{items}</div></section>")
 
     if card["skills"]:
         rows = "".join(
@@ -388,7 +445,11 @@ display:inline-flex;align-items:center;justify-content:center;font-size:14px;tex
 .skills li{{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;padding:6px 0}}
 .bar{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}.bar i{{display:block;height:100%;
 background:var(--red)}}.plain li,.visits li{{padding:8px 0;border-bottom:1px solid var(--line)}}
-.match b{{color:var(--red)}}.visits li{{display:grid;grid-template-columns:90px 1fr auto;gap:8px}}
+.match b{{color:var(--red)}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:10px}}
+.grid div{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}}
+.grid b{{display:block;font-size:22px}}.grid span{{color:var(--muted);font-size:13px}}
+.visits li{{display:grid;grid-template-columns:90px 1fr auto;gap:8px}}
+.targets li{{padding:6px 0}}.targets .bar{{display:block;margin-top:4px}}
 .visits .absent b{{color:#ff8a80}}.visits .present b{{color:#69f0ae}}footer{{color:var(--muted);
 text-align:center;font-size:13px;padding:16px}}
 </style></head><body>

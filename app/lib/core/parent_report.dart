@@ -42,13 +42,15 @@ String parentMessage({
   return b.toString().trim();
 }
 
-/// Даты периода плана, начиная с [from]: неделя — с понедельника по воскресенье,
+/// Даты периода плана, начиная с [from]: неделя — с понедельника по воскресенье, цикл 4–6 недель — с понедельника,
 /// месяц — до конца месяца, сезон — до 31 мая (или до 31 мая следующего года, если сейчас лето-осень).
 (DateTime, DateTime) periodRange(String period, DateTime from) {
   final d = DateTime(from.year, from.month, from.day);
   return switch (period) {
     'week' => (d.subtract(Duration(days: d.weekday - 1)), d.add(Duration(days: 7 - d.weekday))),
     'month' => (DateTime(d.year, d.month), DateTime(d.year, d.month + 1, 0)),
+    'cycle4' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 27))),
+    'cycle6' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 41))),
     _ => (d, DateTime(d.month > 5 ? d.year + 1 : d.year, 5, 31)),
   };
 }

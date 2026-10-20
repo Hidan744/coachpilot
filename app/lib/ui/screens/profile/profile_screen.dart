@@ -3,12 +3,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../sync/api_client.dart';
+import '../../../core/demo_data.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
+import 'staff_section.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -32,6 +36,7 @@ class ProfileScreen extends ConsumerWidget {
           trailing: auth.demo ? null : const Icon(Icons.edit_outlined),
           onTap: auth.demo ? null : () => _editProfile(context, ref, p),
         ),
+        const StaffAndReportsSection(),
         if (auth.demo) ...[
           Card(
             margin: const EdgeInsets.all(16),
@@ -44,6 +49,12 @@ class ProfileScreen extends ConsumerWidget {
                 'Чтобы начать заново, нажмите «Сбросить демо».',
               ),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_motion_outlined, color: AppColors.red),
+            title: const Text('Заполнить примером'),
+            subtitle: const Text('Команда из 16 игроков: тренировки, матчи, статистика, тесты ОФП, планы — чтобы увидеть дашборды и отчёты'),
+            onTap: () => fillDemoExample(context, ref),
           ),
           ListTile(
             leading: const Icon(Icons.restart_alt),
@@ -204,4 +215,23 @@ Future<void> _export(BuildContext context, WidgetRef ref) async {
   } catch (e) {
     if (context.mounted) showError(context, e);
   }
+}
+
+
+/// Пример данных в демо: всё пишется одной транзакцией, затем открывается дашборд команды.
+Future<void> fillDemoExample(BuildContext context, WidgetRef ref) async {
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const AlertDialog(
+      content: Row(children: [CircularProgressIndicator(), SizedBox(width: 16), Expanded(child: Text('Заполняем пример…'))]),
+    ),
+  );
+  final repo = ref.read(repoProvider);
+  final teamId = await repo.db.transaction(() => seedDemoData(repo));
+  ref.read(currentTeamIdProvider.notifier).select(teamId);
+  if (!context.mounted) return;
+  Navigator.of(context, rootNavigator: true).pop();
+  context.go('/team');
+  showInfo(context, 'Пример заполнен: 16 игроков, тренировки, матчи и тесты');
 }
