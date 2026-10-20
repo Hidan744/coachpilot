@@ -41,7 +41,10 @@ final assessmentsProvider = StreamProvider.family<List<PlayerAssessment>, String
 }
 
 class TeamScreen extends ConsumerWidget {
-  const TeamScreen({super.key});
+  const TeamScreen({super.key, this.initialTab = 0});
+
+  /// 0 — состав, 1 — дашборд, 2 — статистика.
+  final int initialTab;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -66,6 +69,7 @@ class TeamScreen extends ConsumerWidget {
 
     return DefaultTabController(
       length: 3,
+      initialIndex: initialTab.clamp(0, 2),
       child: Scaffold(
         appBar: AppBar(
           title: teams.length > 1

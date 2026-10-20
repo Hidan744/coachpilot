@@ -11,6 +11,7 @@ import '../../../data/models.dart';
 import '../../theme.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
+import '../../widgets/motion.dart';
 import '../calendar/calendar_screen.dart';
 import '../sessions/sessions_screens.dart';
 import 'performance_providers.dart';
@@ -42,9 +43,12 @@ Future<void> exportTeamExcel(BuildContext context, WidgetRef ref, Team team) asy
 
 /// Дашборд команды: посещаемость, нагрузка, ОФП, результаты, лидеры.
 class TeamDashboard extends ConsumerWidget {
-  const TeamDashboard({super.key, required this.team});
+  const TeamDashboard({super.key, required this.team, this.embedded = false});
 
   final Team team;
+
+  /// Внутри другого списка (главный экран): без собственной прокрутки.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -114,7 +118,7 @@ class TeamDashboard extends ConsumerWidget {
             .take(3)
             .toList();
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 120), children: [
+    final children = <Widget>[
       GridView.count(
         crossAxisCount: 2,
         shrinkWrap: true,
@@ -246,7 +250,12 @@ class TeamDashboard extends ConsumerWidget {
           ),
         ]),
       ),
-    ]);
+    ];
+    // Карточки появляются по очереди — дашборд «собирается» сверху вниз.
+    var i = 0;
+    final animated = [for (final w in children) w is SizedBox ? w : Appear(index: i++, child: w)];
+    if (embedded) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: animated);
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 120), children: animated);
   }
 
   void _pickPlayer(BuildContext context, List<Player> players) => showModalBottomSheet<void>(

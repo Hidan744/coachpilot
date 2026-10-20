@@ -47,7 +47,7 @@ try {
   await fill(page, 'Бег 30 м, с', '4.6');
   await fill(page, 'Прыжок в длину с места, см', '215');
   await tap(page, 'Сохранить результаты');
-  await see(page, 'ФИЗИЧЕСКИЙ ПРОФИЛЬ');
+  await see(page, 'Физический профиль');
   await see(page, 'Первое тестирование');
   await shot(page, 'perf-03-physical');
   step('тест ОФП: радар и баллы');
@@ -67,7 +67,7 @@ try {
 
   // 5. Дашборд команды и выгрузка Excel
   await tap(page, 'Дашборд', { exact: true });
-  await see(page, 'ПОСЕЩАЕМОСТЬ ПО НЕДЕЛЯМ');
+  await see(page, 'Посещаемость по неделям');
   await shot(page, 'perf-05-dashboard');
   const xlsx = page.waitForEvent('download', { timeout: 30000 });
   await tap(page, 'Для штаба: Excel');

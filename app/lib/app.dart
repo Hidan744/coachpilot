@@ -64,8 +64,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/attendance/:sessionId',
         builder: (_, s) => AttendanceScreen(sessionId: s.pathParameters['sessionId']!, teamId: s.uri.queryParameters['team']!),
       ),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, shell) => _Shell(shell),
+        navigatorContainerBuilder: (context, shell, children) => _FadingBranches(index: shell.currentIndex, children: children),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [
@@ -104,7 +105,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             ]),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/team', builder: (_, _) => const TeamScreen(), routes: [
+            GoRoute(
+                path: '/team',
+                builder: (_, s) {
+                  final tab = int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0;
+                  return TeamScreen(key: ValueKey('team_tab_$tab'), initialTab: tab);
+                },
+                routes: [
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),
               GoRoute(path: 'edit/:id', builder: (_, s) => TeamEditScreen(teamId: s.pathParameters['id'])),
               GoRoute(path: 'player/:id', builder: (_, s) => PlayerScreen(playerId: s.pathParameters['id']!), routes: [
@@ -132,6 +139,37 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Вкладки нижнего меню сменяются плавно; неактивные остаются в памяти (состояние экранов сохраняется).
+class _FadingBranches extends StatelessWidget {
+  const _FadingBranches({required this.index, required this.children});
+
+  final int index;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+        for (var i = 0; i < children.length; i++)
+          IgnorePointer(
+            ignoring: i != index,
+            child: ExcludeSemantics(
+              excluding: i != index,
+              // Анимация затухания — снаружи TickerMode: уходящая вкладка должна успеть погаснуть.
+              child: AnimatedOpacity(
+                opacity: i == index ? 1 : 0,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                child: AnimatedSlide(
+                  offset: i == index ? Offset.zero : const Offset(0, 0.015),
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  child: TickerMode(enabled: i == index, child: children[i]),
+                ),
+              ),
+            ),
+          ),
+      ]);
+}
 
 class _Shell extends StatelessWidget {
   const _Shell(this.shell);

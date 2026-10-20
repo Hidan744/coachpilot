@@ -6,10 +6,23 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'motion.dart';
 
 const chartGrey = Color(0xFF6B6B74);
 const chartBlue = Color(0xFF4FC3F7);
 const chartPalette = [AppColors.red, Colors.white, chartBlue, AppColors.warn, AppColors.good, Color(0xFFBA68C8)];
+
+/// Фон карточек: тёмный градиент и тонкая красноватая рамка — как на экранах спортивной аналитики.
+BoxDecoration cardDecoration({bool accent = false}) => BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: accent ? const [Color(0xFF3A0A0D), Color(0xFF1A1A1D)] : const [Color(0xFF1E1E22), Color(0xFF151517)],
+      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: (accent ? AppColors.red : AppColors.outline).withValues(alpha: accent ? 0.6 : 0.55)),
+      boxShadow: [BoxShadow(color: AppColors.red.withValues(alpha: accent ? 0.18 : 0.05), blurRadius: 18, offset: const Offset(0, 6))],
+    );
 
 /// Карточка блока дашборда: заголовок капсом и содержимое.
 class DashCard extends StatelessWidget {
@@ -22,17 +35,16 @@ class DashCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          color: AppColors.surfaceHigh,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.outline.withValues(alpha: 0.6)),
-        ),
+        decoration: cardDecoration(),
         padding: padding,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
+            Container(width: 3, height: 16, margin: const EdgeInsets.only(right: 8), color: AppColors.red),
             Expanded(
               child: Text(
                 title.toUpperCase(),
+                // Капс — только оформление: экранный диктор и поиск видят обычный текст.
+                semanticsLabel: title,
                 style: const TextStyle(
                   fontFamily: AppTheme.display,
                   fontWeight: FontWeight.w600,
@@ -66,16 +78,13 @@ class KpiTile extends StatelessWidget {
     final up = delta != null && !delta!.startsWith('-') && !delta!.startsWith('−') && delta != '0';
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outline.withValues(alpha: 0.6)),
-      ),
+      decoration: cardDecoration(),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           if (icon != null) ...[Icon(icon, size: 18, color: AppColors.red), const SizedBox(width: 6)],
           Expanded(
             child: Text(label.toUpperCase(),
+                semanticsLabel: label,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 11, letterSpacing: 1, color: AppColors.textMuted)),
@@ -87,7 +96,7 @@ class KpiTile extends StatelessWidget {
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(value,
+              child: CountUp(value,
                   style: const TextStyle(fontFamily: AppTheme.display, fontSize: 30, fontWeight: FontWeight.w700)),
             ),
           ),
@@ -134,7 +143,12 @@ class RadarChart extends StatelessWidget {
         label: 'Радар: ${[for (var i = 0; i < labels.length; i++) '${labels[i]} ${values[i] ?? '—'}'].join(', ')}',
         child: SizedBox(
           height: size,
-          child: CustomPaint(painter: _RadarPainter(labels, values, compare, showValues), size: Size.infinite),
+          child: GrowIn(
+            builder: (_, t) => CustomPaint(
+              painter: _RadarPainter(labels, [for (final v in values) v == null ? null : v * t], compare, showValues),
+              size: Size.infinite,
+            ),
+          ),
         ),
       );
 }
@@ -239,7 +253,14 @@ class LineChart extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         SizedBox(
           height: height,
-          child: CustomPaint(painter: _LinePainter(xLabels, series, minY, maxY, unit), size: Size.infinite),
+          // Линии «прорисовываются» слева направо.
+          child: GrowIn(
+            duration: const Duration(milliseconds: 1100),
+            builder: (_, t) => ClipRect(
+              clipper: _RevealClipper(t),
+              child: CustomPaint(painter: _LinePainter(xLabels, series, minY, maxY, unit), size: Size.infinite),
+            ),
+          ),
         ),
         if (series.length > 1) ...[
           const SizedBox(height: 8),
@@ -369,7 +390,18 @@ class BarChart extends StatelessWidget {
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         SizedBox(
           height: height,
-          child: CustomPaint(painter: _BarPainter(groups, colors, maxY, valueLabels, percent), size: Size.infinite),
+          child: GrowIn(
+            builder: (_, t) => CustomPaint(
+              painter: _BarPainter(
+                [for (final g in groups) BarGroup(g.label, [for (final v in g.values) v == null ? null : v * t], caption: g.caption)],
+                colors,
+                maxY ?? _maxOf(groups),
+                valueLabels && t > 0.98,
+                percent,
+              ),
+              size: Size.infinite,
+            ),
+          ),
         ),
         if (legend != null) ...[
           const SizedBox(height: 8),
@@ -461,8 +493,9 @@ class ProgressRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox.square(
         dimension: size,
-        child: CustomPaint(
-          painter: _RingPainter(value),
+        child: GrowIn(
+          builder: (_, t) => CustomPaint(
+          painter: _RingPainter(value * t),
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Text(center, style: TextStyle(fontFamily: AppTheme.display, fontSize: size * 0.24, fontWeight: FontWeight.w700)),
@@ -470,6 +503,7 @@ class ProgressRing extends StatelessWidget {
                 Text(caption!, textAlign: TextAlign.center, style: TextStyle(fontSize: size * 0.09, color: AppColors.textMuted)),
             ]),
           ),
+        ),
         ),
       );
 }
@@ -515,7 +549,12 @@ class DonutChart extends StatelessWidget {
     final total = parts.values.fold<num>(0, (a, b) => a + b);
     final entries = parts.entries.where((e) => e.value > 0).toList();
     return Row(children: [
-      SizedBox.square(dimension: size, child: CustomPaint(painter: _DonutPainter([for (final e in entries) e.value.toDouble()]))),
+      SizedBox.square(
+        dimension: size,
+        child: GrowIn(
+          builder: (_, t) => CustomPaint(painter: _DonutPainter([for (final e in entries) e.value.toDouble()], t)),
+        ),
+      ),
       const SizedBox(width: 16),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -537,9 +576,10 @@ class DonutChart extends StatelessWidget {
 }
 
 class _DonutPainter extends CustomPainter {
-  _DonutPainter(this.values);
+  _DonutPainter(this.values, [this.t = 1]);
 
   final List<double> values;
+  final double t;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -555,14 +595,14 @@ class _DonutPainter extends CustomPainter {
     }
     var a = -math.pi / 2;
     for (var i = 0; i < values.length; i++) {
-      final sweep = 2 * math.pi * values[i] / total;
+      final sweep = 2 * math.pi * values[i] / total * t;
       canvas.drawArc(Rect.fromCircle(center: c, radius: r), a, sweep - 0.03, false, p..color = chartPalette[i % chartPalette.length]);
       a += sweep;
     }
   }
 
   @override
-  bool shouldRepaint(_DonutPainter old) => old.values != values;
+  bool shouldRepaint(_DonutPainter old) => old.values != values || old.t != t;
 }
 
 /// Горизонтальная полоса «сейчас → цель» с отметкой цели.
@@ -573,7 +613,14 @@ class TargetBar extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: progress.clamp(0.0, 1.0)),
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeOutCubic,
+        builder: (context, p, _) => _bar(p),
+      );
+
+  Widget _bar(double progress) => LayoutBuilder(
         builder: (context, c) => Stack(children: [
           Container(height: height, decoration: BoxDecoration(color: AppColors.outline, borderRadius: BorderRadius.circular(height))),
           Container(
@@ -586,4 +633,22 @@ class TargetBar extends StatelessWidget {
           ),
         ]),
       );
+}
+
+
+double? _maxOf(List<BarGroup> groups) {
+  final all = [for (final g in groups) ...g.values.whereType<double>()];
+  return all.isEmpty ? null : all.reduce(math.max) * 1.15;
+}
+
+class _RevealClipper extends CustomClipper<Rect> {
+  _RevealClipper(this.t);
+
+  final double t;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTWH(0, 0, size.width * t, size.height + 20);
+
+  @override
+  bool shouldReclip(_RevealClipper old) => old.t != t;
 }

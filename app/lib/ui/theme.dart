@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/motion.dart';
+
 /// Клубный стиль: чёрный фон, красный акцент, узкий спортивный шрифт для заголовков.
 /// Интерфейс тёмный всегда — так задумано айдентикой и так лучше читается на поле вечером.
 class AppBrand {
@@ -61,7 +63,16 @@ class AppTheme {
       labelLarge: base.textTheme.labelLarge?.copyWith(fontFamily: display, fontWeight: FontWeight.w600, letterSpacing: 0.6),
     );
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(10));
+    const transitions = FadeSlidePageTransitionsBuilder();
     return base.copyWith(
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: transitions,
+        TargetPlatform.iOS: transitions,
+        TargetPlatform.macOS: transitions,
+        TargetPlatform.windows: transitions,
+        TargetPlatform.linux: transitions,
+        TargetPlatform.fuchsia: transitions,
+      }),
       scaffoldBackgroundColor: AppColors.black,
       textTheme: text,
       appBarTheme: const AppBarTheme(

@@ -46,7 +46,7 @@ class ProfileScreen extends ConsumerWidget {
               child: Text(
                 'Вы в демо-режиме. Всё работает, но данные хранятся только в этом браузере: '
                 'нет синхронизации между устройствами и AI-генерации. '
-                'Чтобы начать заново, нажмите «Сбросить демо».',
+                'Чтобы начать заново, нажмите «Начать демо заново».',
               ),
             ),
           ),
@@ -58,12 +58,22 @@ class ProfileScreen extends ConsumerWidget {
           ),
           ListTile(
             leading: const Icon(Icons.restart_alt),
-            title: const Text('Сбросить демо'),
-            subtitle: const Text('Удалить все данные демо-режима'),
+            title: const Text('Начать демо заново'),
+            subtitle: const Text('С примером данных или с чистого листа'),
             onTap: () async {
-              if (await confirm(context, 'Сбросить демо?', text: 'Команды, планы и отчёты будут удалены.', ok: 'Сбросить')) {
-                await ref.read(authProvider.notifier).logout();
-              }
+              final choice = await showDialog<String>(
+                context: context,
+                builder: (c) => AlertDialog(
+                  title: const Text('Начать демо заново?'),
+                  content: const Text('Все данные демо-режима в этом браузере будут удалены.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c), child: const Text('Отмена')),
+                    TextButton(onPressed: () => Navigator.pop(c, 'empty'), child: const Text('С чистого листа')),
+                    FilledButton(onPressed: () => Navigator.pop(c, 'sample'), child: const Text('С примером')),
+                  ],
+                ),
+              );
+              if (choice != null) await ref.read(authProvider.notifier).resetDemo(sample: choice == 'sample');
             },
           ),
         ] else ...[

@@ -207,8 +207,8 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final today = dayOf(DateTime.now());
     final events = on(widget.day);
 
-    return ListView(padding: const EdgeInsets.only(bottom: 120), children: [
-      if (widget.onAction != null) _ActionStrip(onAction: widget.onAction!),
+    // Кнопки действий закреплены сверху и не уезжают при прокрутке календаря.
+    final list = ListView(padding: const EdgeInsets.only(bottom: 120), children: [
       if (teams.length > 1)
         SizedBox(
           height: 52,
@@ -311,6 +311,12 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           ),
         ),
       for (final e in events) EventCard(e, teams: teams),
+    ]);
+    if (widget.onAction == null) return list;
+    return Column(children: [
+      _ActionStrip(onAction: widget.onAction!),
+      const Divider(height: 1),
+      Expanded(child: list),
     ]);
   }
 }

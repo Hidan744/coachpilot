@@ -60,6 +60,7 @@ try {
   await fill(page, 'Имя', 'Коля');
   await tap(page, 'Сохранить', { exact: true });
   await tap(page, 'Коля');
+  await tap(page, 'Родителям', { exact: true });
   await tap(page, 'Написать');
   await fill(page, 'Текст', 'Больше сна перед игрой');
   await tap(page, 'Сохранить', { exact: true });

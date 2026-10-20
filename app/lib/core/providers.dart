@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db.dart';
 import 'analytics.dart';
+import 'demo_data.dart';
 import '../data/models.dart';
 import '../data/repo.dart';
 import '../sync/api_client.dart';
@@ -15,6 +16,9 @@ const apiUrl = String.fromEnvironment('API_URL', defaultValue: 'http://localhost
 
 /// Сборка-демо без сервера (публичная web-версия): сразу открывается демо-режим.
 const demoOnly = bool.fromEnvironment('DEMO_ONLY');
+
+/// Демо сразу с примером: команда, тренировки, матчи, статистика, ОФП — всё видно с первого экрана.
+const demoSample = bool.fromEnvironment('DEMO_SAMPLE');
 
 /// Переопределяются в main() и в тестах.
 final dbProvider = Provider<AppDb>((ref) => throw UnimplementedError());
@@ -154,9 +158,32 @@ class AuthController extends Notifier<AuthState> {
 
   /// Попробовать без регистрации: всё работает на устройстве, без синхронизации и AI.
   Future<void> startDemo() async {
+    if (demoSample && await _db.getKv('demo_empty') != '1') {
+      final repo = ref.read(repoProvider);
+      if ((await repo.list(Entities.teams, Team.fromJson)).isEmpty) {
+        final teamId = await _db.transaction(() => seedDemoData(repo));
+        await _db.setKv('current_team', teamId);
+      }
+    }
     await _db.setKv(_demoKey, '1');
     unawaited(ref.read(analyticsProvider).track('demo_started'));
     state = const AuthState(ready: true, signedIn: true, demo: true, profile: _demoProfile);
+  }
+
+  /// Начать демо заново: с примером данных или с чистого листа.
+  Future<void> resetDemo({required bool sample}) async {
+    await _db.wipe();
+    await _db.deleteKv(_demoKey);
+    if (!sample) await _db.setKv('demo_empty', '1');
+    state = const AuthState(ready: true);
+    if (sample) {
+      // Пример заполняется сразу, без онбординга.
+      final repo = ref.read(repoProvider);
+      final teamId = await _db.transaction(() => seedDemoData(repo));
+      await _db.setKv('current_team', teamId);
+      ref.read(currentTeamIdProvider.notifier).select(teamId);
+    }
+    await startDemo();
   }
 
   Future<void> logout({bool remote = true}) async {
