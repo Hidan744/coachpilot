@@ -12,6 +12,11 @@ export async function launch() {
   const context = await browser.newContext({ viewport: { width: 400, height: 860 }, locale: 'ru-RU' });
   const page = await context.newPage();
   page.on('pageerror', (e) => console.log('pageerror:', e.message));
+  // THROTTLE=4 — замедлить процессор, как на медленной машине CI.
+  if (process.env.THROTTLE) {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) });
+  }
   return { browser, context, page };
 }
 
@@ -99,7 +104,15 @@ export async function tap(page, text, { exact = false } = {}) {
       return true;
     }, { text, exact });
     if (found) break;
-    if (Date.now() > deadline) throw new Error(`не найден элемент «${text}»`);
+    if (Date.now() > deadline) {
+      // Что было на экране — чтобы по логу CI понять, где оказалось приложение.
+      const seen = await page.evaluate(() =>
+        [...document.querySelectorAll('flt-semantics, [aria-label]')]
+          .map((e) => (e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 40))
+          .filter(Boolean).slice(0, 40));
+      console.log('на экране:', JSON.stringify([page.url(), ...new Set(seen)]));
+      throw new Error(`не найден элемент «${text}»`);
+    }
     await page.waitForTimeout(250);
   }
   await clickLoc(page, page.locator('[data-e2e-target]').first());

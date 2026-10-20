@@ -1,6 +1,6 @@
 // Сезон: календарь (расписание, матчи, импорт), тактическая доска с заменой,
 // индивидуальный план развития и страница для родителей по ссылке.
-import { launch, fill, tap, see, shot, step, registerWithTeam, rawPointer } from './lib.mjs';
+import { launch, fill, tap, see, shot, step, registerWithTeam, rawPointer, go } from './lib.mjs';
 
 const { browser, context, page } = await launch();
 const ruDay = (d) => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
@@ -83,6 +83,7 @@ try {
   // Снова выбираем день матча: после загрузки календаря список дня мог перестроиться.
   // Список календаря мог быть прокручен вниз (клик с прокруткой колесом) — возвращаемся к сетке месяца.
   await page.waitForTimeout(1500);
+  await go(page, '/calendar');
   await page.mouse.move(200, 400);
   for (let i = 0; i < 4; i++) {
     await page.mouse.wheel(0, -1000);
