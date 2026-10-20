@@ -633,11 +633,11 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
     if (mounted) context.push('/tactics/$id');
   }
 
-  Future<void> _stats() async {
+  Future<void> _stats({bool live = false}) async {
     final m = _build();
     if (m == null) return _save();
     await ref.read(repoProvider).put(Entities.matches, m);
-    if (mounted) context.push('/calendar/match/${m.id}/stats');
+    if (mounted) context.push('/calendar/match/${m.id}/${live ? 'live' : 'stats'}');
   }
 
   Future<void> _pickDate() async {
@@ -759,6 +759,13 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
         OutlinedButton.icon(onPressed: _tactics, icon: const Icon(Icons.draw_outlined), label: const Text('Тактика на матч')),
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _stats, icon: const Icon(Icons.query_stats), label: const Text('Статистика матча')),
+        const SizedBox(height: 8),
+        // Live: помощник отмечает действия игроков прямо по ходу игры.
+        OutlinedButton.icon(
+          onPressed: () => _stats(live: true),
+          icon: const Icon(Icons.bolt, color: AppColors.red),
+          label: const Text('Live: отмечать во время игры'),
+        ),
       ]),
     );
   }

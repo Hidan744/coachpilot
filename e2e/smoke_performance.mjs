@@ -29,6 +29,21 @@ try {
   await shot(page, 'perf-01-match-stats');
   step('статистика матча введена');
 
+  // Live: помощник отмечает действия по ходу игры — игрок, действие, журнал, отмена.
+  await tap(page, 'Live: отмечать во время игры');
+  await see(page, 'Выберите игрока');
+  await tap(page, 'Сидоров В.');
+  await tap(page, 'Отбор', { exact: true });
+  await see(page, 'Сидоров В. — Отбор');
+  await tap(page, 'Гол', { exact: true });
+  await see(page, '3 : 0');
+  await tap(page, 'Отменить последнее');
+  await see(page, '2 : 0');
+  await shot(page, 'perf-01b-live');
+  step('Live: отбор отмечен, гол отменён');
+  await page.goBack();
+  await page.waitForTimeout(800);
+
   // 2. Профиль игрока: статистика сезона
   await tap(page, 'Команда');
   await tap(page, 'Ваня Сидоров');

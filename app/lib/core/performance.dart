@@ -60,6 +60,18 @@ const statKeys = [
 
 final statByKey = {for (final s in statKeys) s.key: s};
 
+/// Изменить показатель и сохранить логику связей: гол — это удар в створ, удар в створ — удар,
+/// точных передач не больше передач, выигранных единоборств не больше всех единоборств.
+Map<String, double> applyStatDelta(Map<String, double> stats, String key, double delta) {
+  final next = {...stats, key: double.parse(((stats[key] ?? 0) + delta).toStringAsFixed(1)).clamp(0, 999).toDouble()};
+  double v(String k) => next[k] ?? 0;
+  if (v('shots_on') < v('goals')) next['shots_on'] = v('goals');
+  if (v('shots') < v('shots_on')) next['shots'] = v('shots_on');
+  if (v('passes') < v('passes_ok')) next['passes'] = v('passes_ok');
+  if (v('duels') < v('duels_won')) next['duels'] = v('duels_won');
+  return next;
+}
+
 final statLabels = {for (final s in statKeys) s.key: s.label};
 
 /// Итоги игрока за период.

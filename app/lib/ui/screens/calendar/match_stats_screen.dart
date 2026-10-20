@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/export/excel_report.dart';
@@ -47,6 +48,11 @@ class MatchStatsScreen extends ConsumerWidget {
             Text(DateFormat('d MMMM yyyy', 'ru').format(m.startsAt), style: Theme.of(context).textTheme.bodySmall),
           ]),
           actions: [
+            IconButton(
+              tooltip: 'Live: отмечать во время игры',
+              icon: const Icon(Icons.bolt),
+              onPressed: () => context.push('/calendar/match/${m.id}/live'),
+            ),
             IconButton(
               tooltip: 'Скачать шаблон Excel',
               icon: const Icon(Icons.download_outlined),
@@ -138,15 +144,8 @@ class _PlayerStatCardState extends ConsumerState<_PlayerStatCard> {
     final k = statByKey[key];
     final step = k?.step ?? 1;
     // Скорость начинаем с типичного значения, а не с нуля.
-    final base = k?.max == true && s[key] == 0 && d > 0 ? 24.0 : s[key] + d * step;
-    final next = {...s.stats, key: (double.parse(base.toStringAsFixed(1))).clamp(0, 999).toDouble()};
-    // Гол — это удар в створ, удар в створ — удар; точных передач не больше, чем передач.
-    double v(String k) => next[k] ?? 0;
-    if (v('shots_on') < v('goals')) next['shots_on'] = v('goals');
-    if (v('shots') < v('shots_on')) next['shots'] = v('shots_on');
-    if (v('passes') < v('passes_ok')) next['passes'] = v('passes_ok');
-    if (v('duels') < v('duels_won')) next['duels'] = v('duels_won');
-    _put(s.copyWith(stats: next));
+    final delta = k?.max == true && s[key] == 0 && d > 0 ? 24.0 : d * step;
+    _put(s.copyWith(stats: applyStatDelta(s.stats, key, delta)));
   }
 
   @override

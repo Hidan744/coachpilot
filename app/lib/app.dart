@@ -8,6 +8,7 @@ import 'ui/screens/auth/auth_screens.dart';
 import 'ui/screens/auth/onboarding_screen.dart';
 import 'ui/screens/calendar/calendar_screen.dart';
 import 'ui/screens/calendar/import_matches_screen.dart';
+import 'ui/screens/calendar/live_match_screen.dart';
 import 'ui/screens/calendar/match_stats_screen.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
@@ -85,6 +86,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 ),
                 routes: [
                   GoRoute(path: 'stats', builder: (_, s) => MatchStatsScreen(matchId: s.pathParameters['id']!)),
+                  GoRoute(path: 'live', builder: (_, s) => LiveMatchScreen(matchId: s.pathParameters['id']!)),
                 ],
               ),
               GoRoute(path: 'import', builder: (_, _) => const ImportMatchesScreen()),
