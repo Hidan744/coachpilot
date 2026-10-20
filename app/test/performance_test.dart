@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:coachpilot/core/demo_data.dart';
 import 'package:coachpilot/core/export/excel_report.dart';
 import 'package:coachpilot/core/export/file_name.dart';
+import 'package:coachpilot/core/file_import.dart';
 import 'package:coachpilot/core/performance.dart';
 import 'package:coachpilot/core/stats_import.dart';
 import 'package:coachpilot/data/db.dart';
@@ -249,5 +252,35 @@ void main() {
     // Все 9 игроков сыграли: состав добран без позиций.
     expect(seasonStats(stats).length, 9);
     expect(await repo.list(Entities.devPlans, DevelopmentPlan.fromJson), isNotEmpty);
+  });
+
+  test('шаблон статистики: заполнить в Excel и загрузить обратно', () {
+    final players = [
+      Player(id: 'a', teamId: 't', firstName: 'Иван', lastName: 'Петров', position: 'MF', number: 8),
+      Player(id: 'b', teamId: 't', firstName: 'Олег', lastName: 'Сидоров', position: 'DF', number: 4),
+    ];
+    final book = Excel.decodeBytes(buildStatsTemplate(players));
+    final sheet = book.tables.values.first;
+    final head = [for (final c in sheet.rows.first) c?.value.toString() ?? ''];
+    expect(head, statsTemplateHeader());
+    // Заполняем строку Петрова: минуты, единоборства, выигранные, дистанция с запятой, скорость.
+    final row = sheet.rows.indexWhere((r) => r.first?.value.toString() == 'Иван Петров');
+    void put(String col, String v) =>
+        sheet.updateCell(CellIndex.indexByColumnRow(columnIndex: head.indexOf(col), rowIndex: row), TextCellValue(v));
+    put('Минуты', '75');
+    put('Единоборства', '12');
+    put('Выигранные единоборства', '7');
+    put('Дистанция, км', '9,4');
+    put('Макс. скорость, км/ч', '29.5');
+    put('Подборы', '6');
+    final rows = readTable('s.xlsx', Uint8List.fromList(book.encode()!));
+    final r = parseStatsTable(rows, players).single;
+    expect(r.player.id, 'a');
+    expect(r.minutes, 75);
+    expect(r.stats['duels'], 12);
+    expect(r.stats['duels_won'], 7);
+    expect(r.stats['distance'], 9.4);
+    expect(r.stats['top_speed'], 29.5);
+    expect(r.stats['recoveries'], 6);
   });
 }

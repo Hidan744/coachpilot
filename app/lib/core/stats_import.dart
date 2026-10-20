@@ -25,10 +25,17 @@ const _columns = <String, List<String>>{
   'passes_ok': ['точные пер', 'точн'],
   'passes': ['передачи', 'пасы', 'passes'],
   'key_passes': ['ключев'],
+  'crosses': ['навес', 'кросс', 'crosses'],
   'dribbles': ['обвод', 'дриблинг'],
   'tackles': ['отбор'],
   'interceptions': ['перехват'],
-  'duels_won': ['единоборств'],
+  'recoveries': ['подбор', 'recoveries'],
+  'duels': ['единоборства', 'единоборств', 'дуэли', 'duels'],
+  'duels_won': ['выигранные единоборства', 'выигр. единоборства', 'выигранные дуэли', 'duels won'],
+  'losses': ['потер', 'losses'],
+  'distance': ['дистанц', 'км', 'пробег', 'distance'],
+  'sprints': ['спринт', 'sprints'],
+  'top_speed': ['макс. скорость', 'максимальная скорость', 'скорост', 'top speed'],
   'fouls': ['фол'],
   'yellow': ['жк', 'желт', 'жёлт'],
   'red': ['кк', 'красн'],
@@ -106,6 +113,8 @@ List<ImportedStat> parseStatsTable(List<List<String>> rows, List<Player> players
           if (v > 0) stats[e.value] = v;
       }
     }
+    // Пустая строка (игрок не заполнен) — пропускаем, чтобы не стереть уже введённую статистику.
+    if (minutes == 0 && stats.isEmpty && rating == null && !started) continue;
     if (minutes == 0 && (stats.isNotEmpty || rating != null)) minutes = 90;
     out[player.id] = ImportedStat(player, minutes: minutes, started: started || minutes >= 60, rating: rating, stats: stats);
   }

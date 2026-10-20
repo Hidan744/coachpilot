@@ -36,6 +36,27 @@ class ExcelReportData {
 
 final _d = DateFormat('dd.MM.yyyy');
 
+/// Шаблон для статистики матча: игроки команды по строкам, показатели по колонкам.
+/// Заполняется в Excel (или Google Таблицах) и загружается обратно в матч.
+Uint8List buildStatsTemplate(List<Player> players, {String title = 'Статистика матча'}) {
+  final book = Excel.createExcel();
+  final s = book[title];
+  final head = ['Игрок', 'Минуты', 'В старте', 'Оценка', for (final k in statKeys) k.label];
+  s.appendRow([for (final h in head) TextCellValue(h)]);
+  final style = CellStyle(bold: true, fontColorHex: ExcelColor.white, backgroundColorHex: ExcelColor.fromHexString('#E30613'));
+  for (var i = 0; i < head.length; i++) {
+    s.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0)).cellStyle = style;
+    s.setColumnWidth(i, i == 0 ? 24 : 13);
+  }
+  final sorted = [...players]..sort((a, b) => (a.number ?? 999).compareTo(b.number ?? 999));
+  for (final p in sorted) {
+    s.appendRow([TextCellValue(p.fullName)]);
+  }
+  book.delete('Sheet1');
+  book.setDefaultSheet(title);
+  return Uint8List.fromList(book.encode()!);
+}
+
 Uint8List buildExcelReport(ExcelReportData r) {
   final book = Excel.createExcel();
   final header = CellStyle(

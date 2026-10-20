@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/export/excel_report.dart';
+import '../../../core/export/save_file.dart';
 import '../../../core/file_import.dart';
 import '../../../core/performance.dart';
 import '../../../core/providers.dart';
@@ -46,6 +48,15 @@ class MatchStatsScreen extends ConsumerWidget {
           ]),
           actions: [
             IconButton(
+              tooltip: 'Скачать шаблон Excel',
+              icon: const Icon(Icons.download_outlined),
+              onPressed: () => saveFile(
+                buildStatsTemplate(players),
+                'Статистика ${m.opponent} ${DateFormat('dd.MM.yyyy').format(m.startsAt)}.xlsx',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              ),
+            ),
+            IconButton(
               tooltip: 'Загрузить статистику из файла',
               icon: const Icon(Icons.upload_file),
               onPressed: () => _import(context, ref, m, players),
@@ -57,7 +68,8 @@ class MatchStatsScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: Text(
               'Сыграли: $played · голов: $goals${m.hasScore ? ' · счёт ${m.score}' : ''}. '
-              'Отметьте, кто играл, — минуты подставятся сами.',
+              'Отметьте, кто играл, — минуты подставятся сами. '
+              'Или скачайте шаблон Excel (⤓), заполните и загрузите (⤒).',
               style: const TextStyle(color: AppColors.textMuted),
             ),
           ),
