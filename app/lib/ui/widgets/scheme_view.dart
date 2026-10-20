@@ -119,6 +119,7 @@ class _SchemeViewState extends State<SchemeView> with SingleTickerProviderStateM
               selected: widget.selected,
               positions: started ? _anim.positionsAt(t) : null,
               activeStep: started && _c.value < 1 ? _anim.steps[_anim.stepIndexAt(t)] : null,
+              resolved: _anim.resolvedPaths,
             ),
           ),
           if (canPlay && _anim.stepCount > 1 && started)
@@ -162,7 +163,17 @@ class _Badge extends StatelessWidget {
 }
 
 class SchemePainter extends CustomPainter {
-  SchemePainter(this.scheme, {this.selected, this.preview, this.positions, this.activeStep, this.showSteps = true});
+  SchemePainter(
+    this.scheme, {
+    this.selected,
+    this.preview,
+    this.positions,
+    this.activeStep,
+    this.showSteps = true,
+    this.resolved,
+    this.ghosts,
+    this.highlightSet,
+  });
 
   final Scheme scheme;
   final int? selected;
@@ -179,6 +190,18 @@ class SchemePainter extends CustomPainter {
   /// Подписывать номера шагов у стрелок, если шагов больше одного.
   final bool showSteps;
 
+  /// Пути стрелок с учётом того, где игрок стоит к своему шагу (из SchemeAnimation). Без них — как нарисованы.
+  final Map<int, List<Offset>>? resolved;
+
+  /// Полупрозрачные фишки там, где игроки окажутся после всех шагов (редактор).
+  final Map<int, Offset>? ghosts;
+
+  /// Подсветка нескольких элементов (например, кому можно отдать пас).
+  final Set<int>? highlightSet;
+
+  List<Offset> _pathOf(int i, SchemeItem it) =>
+      resolved?[i] ?? [for (final q in it.path) Offset(q.x, q.y)];
+
   @override
   void paint(Canvas canvas, Size size) {
     _paintField(canvas, size);
@@ -194,30 +217,59 @@ class SchemePainter extends CustomPainter {
       for (var i = 0; i < items.length; i++)
         if (!items[i].isArrow) i,
     ];
+    for (final e in ghosts?.entries ?? const <MapEntry<int, Offset>>[]) {
+      if (e.key < 0 || e.key >= items.length) continue;
+      final it = items[e.key];
+      if ((Offset(it.x, it.y) - e.value).distance < 0.005) continue;
+      canvas.saveLayer(null, Paint()..color = const Color.fromRGBO(0, 0, 0, 0.35));
+      _paintItem(canvas, size, s, it.copyWith(x: e.value.dx, y: e.value.dy));
+      canvas.restore();
+    }
     for (final i in order) {
       var it = items[i];
       final pos = positions?[i];
       if (pos != null && !it.isArrow) {
-        it = SchemeItem(type: it.type, x: pos.dx, y: pos.dy, label: it.label, color: it.color);
+        it = it.copyWith(x: pos.dx, y: pos.dy);
       }
       final dim = activeStep != null && it.isMovement && it.stepOrFirst != activeStep;
       if (dim) canvas.saveLayer(null, Paint()..color = const Color.fromRGBO(0, 0, 0, 0.25));
-      _paintItem(canvas, size, s, it, highlighted: i == selected);
+      if (it.isMovement) {
+        if (i == selected) _arrowGlow(canvas, size, s, _pathOf(i, it));
+        _arrow(canvas, [for (final q in _pathOf(i, it)) Offset(q.dx * size.width, q.dy * size.height)], it.type,
+            s * 0.035, toPlayer: it.actor == null || it.target != null);
+      } else {
+        _paintItem(canvas, size, s, it, highlighted: i == selected || (highlightSet?.contains(i) ?? false));
+      }
       if (dim) canvas.restore();
-      if (multiStep && it.isMovement && positions == null) _stepBadge(canvas, size, s, it);
+      if (multiStep && it.isMovement && positions == null) _stepBadge(canvas, size, s, _pathOf(i, it), it.stepOrFirst);
     }
     for (final e in positions?.entries ?? const <MapEntry<int, Offset>>[]) {
       if (e.key < 0) _paintItem(canvas, size, s, SchemeItem(type: 'ball', x: e.value.dx, y: e.value.dy));
     }
   }
 
-  void _stepBadge(Canvas canvas, Size size, double s, SchemeItem it) {
+  void _stepBadge(Canvas canvas, Size size, double s, List<Offset> path, int step) {
     final r = s * 0.022;
-    final a = Offset(it.x * size.width, it.y * size.height);
-    final b = Offset((it.x2 ?? it.x) * size.width, (it.y2 ?? it.y) * size.height);
-    final c = Offset.lerp(a, b, 0.5)!;
+    final c0 = SchemeMove(0, path.length >= 2 ? path : [path.first, path.first]).at(0.5);
+    final c = Offset(c0.dx * size.width, c0.dy * size.height);
     canvas.drawCircle(c, r, Paint()..color = Colors.black.withValues(alpha: 0.75));
-    _text(canvas, '${it.stepOrFirst}', c, r * 1.3, Colors.white);
+    _text(canvas, '$step', c, r * 1.3, Colors.white);
+  }
+
+  void _arrowGlow(Canvas canvas, Size size, double s, List<Offset> path) {
+    final p = Path()..moveTo(path.first.dx * size.width, path.first.dy * size.height);
+    for (final q in path.skip(1)) {
+      p.lineTo(q.dx * size.width, q.dy * size.height);
+    }
+    canvas.drawPath(
+      p,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.3)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.035
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
   }
 
   void _paintField(Canvas canvas, Size size) {
@@ -391,50 +443,79 @@ class SchemePainter extends CustomPainter {
             ..strokeJoin = StrokeJoin.round,
         );
       default:
-        if (it.type.startsWith('arrow_') && it.x2 != null && it.y2 != null) {
-          _arrow(canvas, p, Offset(it.x2! * size.width, it.y2! * size.height), it.type, r);
+        if (it.isMovement) {
+          _arrow(canvas, [for (final q in it.path) Offset(q.x * size.width, q.y * size.height)], it.type, r);
         }
     }
   }
 
-  void _arrow(Canvas canvas, Offset a, Offset b0, String type, double r) {
+  /// Стрелка по ломаной: пунктир — бег, волна — ведение, сплошная — пас.
+  void _arrow(Canvas canvas, List<Offset> pts0, String type, double r, {bool toPlayer = true}) {
+    final pts = <Offset>[pts0.first];
+    for (final q in pts0.skip(1)) {
+      if ((q - pts.last).distance > 0.5) pts.add(q);
+    }
+    if (pts.length < 2) return;
     // Конец стрелки чуть раньше цели, чтобы наконечник не прятался под фишкой игрока.
-    final full = b0 - a;
-    final b = full.distance > r * 4 ? b0 - full / full.distance * r * 1.1 : b0;
+    final lastSeg = pts.last - pts[pts.length - 2];
+    if (lastSeg.distance > r * 4 && (toPlayer || type == 'arrow_pass')) {
+      pts[pts.length - 1] = pts.last - lastSeg / lastSeg.distance * r * 1.1;
+    }
     final paint = Paint()
       ..color = type == 'arrow_pass' ? Colors.white : const Color(0xFFFFF59D)
       ..style = PaintingStyle.stroke
       ..strokeWidth = r * 0.22
-      ..strokeCap = StrokeCap.round;
-    final d = b - a;
-    final len = d.distance;
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    // Длины по ломаной.
+    final cum = <double>[0];
+    for (var i = 1; i < pts.length; i++) {
+      cum.add(cum.last + (pts[i] - pts[i - 1]).distance);
+    }
+    final len = cum.last;
     if (len < 2) return;
-    final dir = d / len;
-    final normal = Offset(-dir.dy, dir.dx);
-    final end = b - dir * r * 0.4;
+    Offset at(double t) {
+      var i = 1;
+      while (i < pts.length - 1 && cum[i] < t) {
+        i++;
+      }
+      final seg = cum[i] - cum[i - 1];
+      return Offset.lerp(pts[i - 1], pts[i], seg == 0 ? 1 : ((t - cum[i - 1]) / seg).clamp(0.0, 1.0))!;
+    }
+
+    Offset dirAt(double t) {
+      final d = at(math.min(len, t + 1)) - at(math.max(0, t - 1));
+      return d.distance == 0 ? const Offset(1, 0) : d / d.distance;
+    }
+
+    final stop = len - r * 0.5;
     switch (type) {
       case 'arrow_run':
-        // Пунктир: бег без мяча.
         const dash = 8.0, gap = 6.0;
-        var t = 0.0;
-        while (t < len - r) {
-          final t2 = math.min(t + dash, len - r * 0.4);
-          canvas.drawLine(a + dir * t, a + dir * t2, paint);
-          t += dash + gap;
+        for (var t = 0.0; t < stop; t += dash + gap) {
+          canvas.drawLine(at(t), at(math.min(t + dash, stop)), paint);
         }
       case 'arrow_dribble':
-        // Волна: ведение мяча.
-        final path = Path()..moveTo(a.dx, a.dy);
-        const step = 4.0;
-        for (var t = step; t < len - r * 0.4; t += step) {
-          final o = math.sin(t / 6) * r * 0.35;
-          final q = a + dir * t + normal * o;
+        final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+        for (var t = 4.0; t < stop; t += 4) {
+          final d = dirAt(t);
+          final q = at(t) + Offset(-d.dy, d.dx) * (math.sin(t / 6) * r * 0.35);
           path.lineTo(q.dx, q.dy);
         }
         canvas.drawPath(path, paint);
       default:
-        canvas.drawLine(a, end, paint);
+        final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+        for (var t = 6.0; t < stop; t += 6) {
+          final q = at(t);
+          path.lineTo(q.dx, q.dy);
+        }
+        final e = at(stop);
+        path.lineTo(e.dx, e.dy);
+        canvas.drawPath(path, paint);
     }
+    final b = pts.last;
+    final dir = dirAt(len - 2);
+    final normal = Offset(-dir.dy, dir.dx);
     final head = Path()
       ..moveTo(b.dx, b.dy)
       ..lineTo((b - dir * r * 0.9 + normal * r * 0.45).dx, (b - dir * r * 0.9 + normal * r * 0.45).dy)
@@ -482,7 +563,10 @@ class SchemePainter extends CustomPainter {
       old.selected != selected ||
       old.preview != preview ||
       old.positions != positions ||
-      old.activeStep != activeStep;
+      old.activeStep != activeStep ||
+      old.resolved != resolved ||
+      old.ghosts != ghosts ||
+      old.highlightSet != highlightSet;
 }
 
 Color? parseHexColor(String? hex) {

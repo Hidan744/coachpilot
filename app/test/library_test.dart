@@ -1,3 +1,4 @@
+import 'package:coachpilot/core/scheme_animation.dart';
 import 'package:coachpilot/data/models.dart';
 import 'package:coachpilot/ui/screens/library/library_screens.dart';
 import 'package:coachpilot/ui/screens/library/scheme_editor.dart';
@@ -27,8 +28,8 @@ void main() {
     expect(applyFilter([...all, sys], const DrillFilter(tab: 'mine'), {}, null).length, 3);
   });
 
-  testWidgets('редактор схемы: ставим игрока, рисуем пас, отменяем, удаляем', (tester) async {
-    tester.view.physicalSize = const Size(800, 1400);
+  testWidgets('редактор схемы: игрок с мячом, ведение по точкам, пас партнёру, отмена', (tester) async {
+    tester.view.physicalSize = const Size(800, 1500);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     Scheme? result;
@@ -47,39 +48,81 @@ void main() {
     await tester.pumpAndSettle();
 
     final canvas = find.byKey(const Key('scheme_canvas'));
-    final box = tester.getRect(canvas);
+    // Поле меняет размер, когда появляются панели инструментов, — считаем координаты каждый раз.
+    Offset at(double x, double y) {
+      final box = tester.getRect(canvas);
+      return Offset(box.left + box.width * x, box.top + box.height * y);
+    }
 
-    // Игрок синих: выбрать инструмент и коснуться поля.
+    // Два игрока: A внизу слева, B справа.
     await tester.tap(find.bySemanticsLabel('Игрок (красные)'));
     await tester.pump();
-    await tester.tapAt(box.center);
+    await tester.tapAt(at(0.2, 0.8));
     await tester.pump();
-    // Пас: протянуть.
-    await tester.tap(find.bySemanticsLabel('Пас'));
+    await tester.tapAt(at(0.8, 0.5));
     await tester.pump();
-    await tester.dragFrom(box.topLeft + const Offset(60, 60), const Offset(200, 100));
-    await tester.pumpAndSettle();
-    // Ещё конус и отмена последнего действия.
-    await tester.tap(find.bySemanticsLabel('Конус'));
+    // Мяч у игрока A.
+    await tester.tap(find.bySemanticsLabel('Мяч'));
     await tester.pump();
-    await tester.tapAt(box.bottomRight - const Offset(50, 50));
+    await tester.tapAt(at(0.21, 0.81));
     await tester.pump();
-    await tester.tap(find.byTooltip('Отменить'));
+    // Второй мяч тому же игроку не ставится.
+    await tester.tapAt(at(0.2, 0.8));
     await tester.pump();
-    // Выбрать игрока и передвинуть.
-    await tester.tap(find.bySemanticsLabel('Выбор и перемещение'));
+    expect(find.text('У этого игрока уже есть мяч'), findsOneWidget);
+
+    // Движение: A ведёт мяч по двум точкам.
+    await tester.tap(find.bySemanticsLabel('Движение игрока'));
     await tester.pump();
-    await tester.dragFrom(box.center, const Offset(-100, 0));
+    await tester.tapAt(at(0.2, 0.8));
+    await tester.pump();
+    expect(find.textContaining('Ведение'), findsWidgets);
+    await tester.tapAt(at(0.35, 0.6));
+    await tester.pump();
+    await tester.tapAt(at(0.5, 0.45));
+    await tester.pump();
+    expect(find.text('Точек: 2'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pump();
+    expect(find.textContaining('Точек'), findsNothing);
+
+    // Шаг 2: A (уже в новой точке) отдаёт пас B.
+    await tester.tapAt(at(0.5, 0.45));
+    await tester.pump();
+    await tester.tap(find.text('Пас'));
+    await tester.pump();
+    await tester.tapAt(at(0.8, 0.5));
     await tester.pump();
 
-    await tester.tap(find.text('Готово'));
+    // Конус и отмена.
+    await tester.tap(find.bySemanticsLabel('Конус'));
+    await tester.pump();
+    await tester.tapAt(at(0.9, 0.9));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Отменить').first);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Готово'));
     await tester.pumpAndSettle();
 
     expect(result, isNotNull);
     final items = result!.items;
-    expect(items.map((e) => e.type), ['player_a', 'arrow_pass']);
-    expect(items[0].label, '1');
-    expect(items[0].x, lessThan(0.5)); // передвинут влево
-    expect(items[1].x2! > items[1].x, isTrue);
+    expect(items.map((e) => e.type), ['player_a', 'player_a', 'ball', 'arrow_dribble', 'arrow_pass']);
+    final a = items[0], b = items[1], ball = items[2], dribble = items[3], pass = items[4];
+    expect(a.id, isNotNull);
+    expect(ball.holder, a.id);
+    expect(dribble.actor, a.id);
+    expect(dribble.points!.length, 3);
+    expect(dribble.step, 1);
+    expect(pass.actor, a.id);
+    expect(pass.target, b.id);
+    expect(pass.step, 2);
+
+    // Проигрывание: игрок доходит до последней точки, мяч в итоге у B, второго мяча нет.
+    final anim = SchemeAnimation(result!);
+    final end = anim.positionsAt(2);
+    expect((end[0]! - const Offset(0.5, 0.45)).distance, lessThan(0.01));
+    expect((end[2]! - (Offset(b.x, b.y) + ballOffset)).distance, lessThan(0.01));
+    expect(anim.virtualKeys, isEmpty);
   });
 }

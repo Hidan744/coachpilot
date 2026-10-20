@@ -61,22 +61,41 @@ try {
   await tap(page, 'Своё упражнение');
   await fill(page, 'Название', 'Стенка и рывок');
   await tap(page, 'Нарисовать схему');
+  // Поле меняет размер, когда появляются панели, — координаты считаем по текущему положению.
+  const fieldAt = async (x, y) => {
+    const r = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('flt-semantics, [aria-label]')].filter((e) =>
+        ((e.getAttribute('aria-label') || '') + (e.textContent || '')).includes('Поле схемы'));
+      const inner = nodes.filter((e) => !nodes.some((o) => o !== e && e.contains(o)));
+      const b = inner[0].getBoundingClientRect();
+      return { x: b.x, y: b.y, w: b.width, h: b.height };
+    });
+    return [r.x + r.w * x, r.y + r.h * y];
+  };
+  const clickField = async (x, y) => {
+    const [px, py] = await fieldAt(x, y);
+    await rawPointer(page, () => page.mouse.click(px, py));
+    await page.waitForTimeout(250);
+  };
+  // Нападающий и партнёр, мяч у нападающего.
   await tap(page, 'Игрок (красные)');
-  await rawPointer(page, async () => {
-    await page.mouse.click(120, 400);
-    await page.mouse.click(280, 400);
-  });
-  await tap(page, 'Пас');
-  await rawPointer(page, async () => {
-    await page.mouse.move(122, 402); await page.mouse.down();
-    await page.mouse.move(200, 402, { steps: 6 }); await page.mouse.move(276, 402, { steps: 6 }); await page.mouse.up();
-  });
-  await tap(page, '+ 2');
-  await tap(page, 'Бег без мяча');
-  await rawPointer(page, async () => {
-    await page.mouse.move(122, 402); await page.mouse.down();
-    await page.mouse.move(160, 350, { steps: 6 }); await page.mouse.move(200, 300, { steps: 6 }); await page.mouse.up();
-  });
+  await clickField(0.3, 0.7);
+  await clickField(0.75, 0.5);
+  await tap(page, 'Мяч');
+  await clickField(0.3, 0.7);
+  // Движение 1: ведение по точкам.
+  await tap(page, 'Движение игрока');
+  await clickField(0.3, 0.7);
+  await see(page, 'Ведение (1 с мячом)');
+  await clickField(0.4, 0.5);
+  await clickField(0.5, 0.35);
+  await see(page, 'Точек: 2');
+  await tap(page, 'Путь готов');
+  // Движение 2: пас партнёру касанием.
+  await clickField(0.5, 0.35);
+  await tap(page, 'Пас', { exact: true });
+  await see(page, 'Пас от 1');
+  await clickField(0.75, 0.5);
   await shot(page, 'f2-06-editor-steps');
   await tap(page, 'Проиграть движение');
   await see(page, 'Нажмите ▶');

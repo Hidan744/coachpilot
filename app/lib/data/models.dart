@@ -203,11 +203,23 @@ class SchemeItem {
   /// Шаг анимации для стрелок: стрелки одного шага проигрываются одновременно.
   final int? step;
 
-  /// Линия от руки (тип pen): точки в координатах поля.
+  /// Линия от руки (pen) или путь движения по точкам (стрелки): точки в координатах поля.
   final List<Offset2>? points;
 
   /// Цвет линии от руки: #RRGGBB.
   final String? color;
+
+  /// Постоянный id игрока или мяча: на него ссылаются движения и мяч.
+  final String? id;
+
+  /// Для движения: кто двигается (id игрока). Без него — старые схемы, двигается ближайший.
+  final String? actor;
+
+  /// Для паса: кому (id игрока). Мяч переходит к нему.
+  final String? target;
+
+  /// Для мяча: у кого мяч (id игрока). Свободный мяч — без владельца.
+  final String? holder;
 
   const SchemeItem({
     required this.type,
@@ -219,6 +231,10 @@ class SchemeItem {
     this.step,
     this.points,
     this.color,
+    this.id,
+    this.actor,
+    this.target,
+    this.holder,
   });
 
   bool get isArrow => type.startsWith('arrow_') || type == 'zone';
@@ -226,6 +242,11 @@ class SchemeItem {
   bool get isPlayer => const {'player_a', 'player_b', 'neutral', 'goalkeeper'}.contains(type);
 
   int get stepOrFirst => step ?? 1;
+
+  /// Путь движения: точки, а у старых стрелок — начало и конец.
+  List<Offset2> get path => points != null && points!.length >= 2
+      ? points!
+      : [Offset2(x, y), Offset2(x2 ?? x, y2 ?? y)];
 
   factory SchemeItem.fromJson(Json j) => SchemeItem(
         type: j['type'],
@@ -239,6 +260,10 @@ class SchemeItem {
             ?.map((p) => Offset2(((p as List)[0] as num).toDouble(), (p[1] as num).toDouble()))
             .toList(),
         color: j['color'],
+        id: j['id'],
+        actor: j['actor'],
+        target: j['target'],
+        holder: j['holder'],
       );
 
   Json toJson() => {
@@ -251,27 +276,57 @@ class SchemeItem {
         if (step != null) 'step': step,
         if (points != null) 'points': [for (final p in points!) [_r(p.x), _r(p.y)]],
         if (color != null) 'color': color,
+        if (id != null) 'id': id,
+        if (actor != null) 'actor': actor,
+        if (target != null) 'target': target,
+        if (holder != null) 'holder': holder,
       };
 
   static double _r(double v) => (v * 1000).roundToDouble() / 1000;
 
-  SchemeItem moved(double dx, double dy) => SchemeItem(
+  static const _keep = Object();
+
+  /// Копия с изменёнными полями; для nullable-полей передайте null явно, чтобы очистить.
+  SchemeItem copyWith({
+    double? x,
+    double? y,
+    Object? x2 = _keep,
+    Object? y2 = _keep,
+    Object? label = _keep,
+    Object? step = _keep,
+    Object? points = _keep,
+    Object? id = _keep,
+    Object? actor = _keep,
+    Object? target = _keep,
+    Object? holder = _keep,
+  }) =>
+      SchemeItem(
         type: type,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        x2: identical(x2, _keep) ? this.x2 : x2 as double?,
+        y2: identical(y2, _keep) ? this.y2 : y2 as double?,
+        label: identical(label, _keep) ? this.label : label as String?,
+        step: identical(step, _keep) ? this.step : step as int?,
+        points: identical(points, _keep) ? this.points : points as List<Offset2>?,
+        color: color,
+        id: identical(id, _keep) ? this.id : id as String?,
+        actor: identical(actor, _keep) ? this.actor : actor as String?,
+        target: identical(target, _keep) ? this.target : target as String?,
+        holder: identical(holder, _keep) ? this.holder : holder as String?,
+      );
+
+  SchemeItem moved(double dx, double dy) => copyWith(
         x: x + dx,
         y: y + dy,
         x2: x2 == null ? null : x2! + dx,
         y2: y2 == null ? null : y2! + dy,
-        label: label,
-        step: step,
         points: points?.map((p) => Offset2(p.x + dx, p.y + dy)).toList(),
-        color: color,
       );
 
-  SchemeItem withStep(int? s) =>
-      SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: label, step: s, points: points, color: color);
+  SchemeItem withStep(int? s) => copyWith(step: s);
 
-  SchemeItem withLabel(String? l) =>
-      SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: l, step: step, points: points, color: color);
+  SchemeItem withLabel(String? l) => copyWith(label: l);
 }
 
 /// Точка линии от руки (без зависимости моделей от Flutter).

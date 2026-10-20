@@ -93,4 +93,83 @@ void main() {
     }
     expect(animated, greaterThan(60));
   });
+
+  group('схемы с привязкой к игроку', () {
+    // Нападающий A с мячом, защитник D без мяча, партнёр B.
+    const a = SchemeItem(type: 'player_a', x: 0.2, y: 0.8, id: 'A');
+    const ball = SchemeItem(type: 'ball', x: 0.225, y: 0.825, id: 'M', holder: 'A');
+    const d = SchemeItem(type: 'player_b', x: 0.4, y: 0.5, id: 'D');
+    const b = SchemeItem(type: 'player_a', x: 0.8, y: 0.6, id: 'B');
+
+    test('ведение по точкам: игрок проходит весь путь до последней точки, мяч у ног', () {
+      const s = Scheme(items: [
+        a, ball, d, b,
+        SchemeItem(type: 'arrow_dribble', x: 0.2, y: 0.8, actor: 'A', step: 1, points: [
+          Offset2(0.2, 0.8), Offset2(0.3, 0.6), Offset2(0.5, 0.4),
+        ]),
+      ]);
+      final an = SchemeAnimation(s);
+      final endPos = an.positionsAt(1);
+      expect(near(endPos[0]!, const Offset(0.5, 0.4)), isTrue);
+      expect(near(endPos[1]!, const Offset(0.525, 0.425)), isTrue);
+      // защитник без мяча стоит, второго мяча нет
+      expect(near(endPos[2]!, const Offset(0.4, 0.5)), isTrue);
+      expect(an.virtualKeys, isEmpty);
+      // середина пути — на ломаной, а не на прямой от начала к концу
+      final mid = an.positionsAt(0.5)[0]!;
+      expect(mid.dx, greaterThan(0.25));
+    });
+
+    test('пас партнёру: мяч уходит к нему, следующее ведение — уже у партнёра', () {
+      const s = Scheme(items: [
+        a, ball, d, b,
+        SchemeItem(type: 'arrow_pass', x: 0.2, y: 0.8, x2: 0.8, y2: 0.6, actor: 'A', target: 'B', step: 1),
+        SchemeItem(type: 'arrow_run', x: 0.4, y: 0.5, x2: 0.7, y2: 0.55, actor: 'D', step: 1),
+        SchemeItem(type: 'arrow_dribble', x: 0.8, y: 0.6, x2: 0.8, y2: 0.2, actor: 'B', step: 2),
+        // пас без мяча у пасующего ничего не делает
+        SchemeItem(type: 'arrow_pass', x: 0.4, y: 0.5, x2: 0.2, y2: 0.8, actor: 'D', target: 'A', step: 2),
+      ]);
+      final an = SchemeAnimation(s);
+      expect(an.stepCount, 2);
+      final after1 = an.positionsAt(1);
+      expect(near(after1[1]!, const Offset(0.8, 0.6) + ballOffset), isTrue);
+      expect(near(after1[2]!, const Offset(0.7, 0.55)), isTrue);
+      final after2 = an.positionsAt(2);
+      expect(near(after2[3]!, const Offset(0.8, 0.2)), isTrue);
+      expect(near(after2[1]!, const Offset(0.8, 0.2) + ballOffset), isTrue);
+      expect(an.finalHolders[1], 3);
+    });
+
+    test('путь следующего шага начинается там, где игрок оказался', () {
+      const s = Scheme(items: [
+        a,
+        SchemeItem(type: 'arrow_run', x: 0.2, y: 0.8, x2: 0.2, y2: 0.5, actor: 'A', step: 1),
+        // нарисован от старого места — проигрывается от нового
+        SchemeItem(type: 'arrow_run', x: 0.2, y: 0.8, x2: 0.5, y2: 0.8, actor: 'A', step: 2),
+      ]);
+      final an = SchemeAnimation(s);
+      expect(near(an.resolvedPaths[2]!.first, const Offset(0.2, 0.5)), isTrue);
+      expect(near(an.positionsAt(2)[0]!, const Offset(0.5, 0.5)), isTrue);
+    });
+
+    test('бег игрока с мячом оставляет мяч на месте', () {
+      const s = Scheme(items: [
+        a, ball,
+        SchemeItem(type: 'arrow_run', x: 0.2, y: 0.8, x2: 0.6, y2: 0.8, actor: 'A', step: 1),
+      ]);
+      final end = SchemeAnimation(s).positionsAt(1);
+      expect(near(end[1]!, const Offset(0.225, 0.825)), isTrue);
+    });
+
+    test('старая схема с мячом далеко от начала паса — второй мяч не появляется', () {
+      const s = Scheme(items: [
+        SchemeItem(type: 'player_a', x: 0.2, y: 0.2),
+        SchemeItem(type: 'ball', x: 0.5, y: 0.5),
+        SchemeItem(type: 'arrow_pass', x: 0.2, y: 0.2, x2: 0.7, y2: 0.7),
+      ]);
+      final an = SchemeAnimation(s);
+      expect(an.virtualKeys, isEmpty);
+      expect(near(an.positionsAt(1)[1]!, const Offset(0.7, 0.7)), isTrue);
+    });
+  });
 }

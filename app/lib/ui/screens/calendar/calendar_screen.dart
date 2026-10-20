@@ -85,11 +85,29 @@ class _PlanningScreenState extends ConsumerState<PlanningScreen> with SingleTick
         body: TabBarView(
           controller: _tabs,
           children: [
-            CalendarView(day: _day, onDay: (d) => setState(() => _day = d)),
+            CalendarView(day: _day, onDay: (d) => setState(() => _day = d), onAction: _run),
             const SessionsScreen(embedded: true),
           ],
         ),
       );
+
+  /// Действия календаря: из кнопок на экране и из меню «Добавить».
+  void _run(String action) {
+    switch (action) {
+      case 'match':
+        context.push('/calendar/match/new?day=${_day.toIso8601String()}');
+      case 'slot':
+        context.push('/calendar/slot/new');
+      case 'slots':
+        context.push('/calendar/slots');
+      case 'session':
+        createSessionAt(context, ref, DateTime(_day.year, _day.month, _day.day, 18), teamId: ref.read(currentTeamProvider)?.id);
+      case 'import':
+        context.push('/calendar/import');
+      case 'tactics':
+        context.push('/tactics');
+    }
+  }
 
   Future<void> _addMenu(BuildContext context) async {
     // Выбор возвращается из шторки и выполняется один раз: двойное касание не открывает экран дважды.
@@ -129,17 +147,8 @@ class _PlanningScreenState extends ConsumerState<PlanningScreen> with SingleTick
           ]),
         ),
       );
-    if (!context.mounted) return;
-    switch (choice) {
-      case 'match':
-        context.push('/calendar/match/new?day=${_day.toIso8601String()}');
-      case 'slot':
-        context.push('/calendar/slot/new');
-      case 'session':
-        createSessionAt(context, ref, DateTime(_day.year, _day.month, _day.day, 18), teamId: ref.read(currentTeamProvider)?.id);
-      case 'import':
-        context.push('/calendar/import');
-    }
+    if (!context.mounted || choice == null) return;
+    _run(choice);
   }
 }
 
@@ -169,10 +178,11 @@ Future<void> createSessionAt(
 }
 
 class CalendarView extends ConsumerStatefulWidget {
-  const CalendarView({super.key, required this.day, required this.onDay});
+  const CalendarView({super.key, required this.day, required this.onDay, this.onAction});
 
   final DateTime day;
   final ValueChanged<DateTime> onDay;
+  final ValueChanged<String>? onAction;
 
   @override
   ConsumerState<CalendarView> createState() => _CalendarViewState();
@@ -198,6 +208,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
     final events = on(widget.day);
 
     return ListView(padding: const EdgeInsets.only(bottom: 120), children: [
+      if (widget.onAction != null) _ActionStrip(onAction: widget.onAction!),
       if (teams.length > 1)
         SizedBox(
           height: 52,
@@ -302,6 +313,57 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       for (final e in events) EventCard(e, teams: teams),
     ]);
   }
+}
+
+/// Главные действия календаря — сразу на экране, без меню.
+class _ActionStrip extends StatelessWidget {
+  const _ActionStrip({required this.onAction});
+
+  final ValueChanged<String> onAction;
+
+  static const _items = [
+    ('match', Icons.sports_soccer, 'Матч'),
+    ('session', Icons.edit_calendar_outlined, 'Тренировка'),
+    ('slot', Icons.repeat, 'Расписание\nкоманд'),
+    ('import', Icons.upload_file, 'Календарь\nигр'),
+    ('tactics', Icons.draw_outlined, 'Тактика'),
+  ];
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 92,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+          children: [
+            for (final (id, icon, label) in _items)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Material(
+                  color: id == 'match' ? AppColors.red : AppColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => onAction(id),
+                    child: SizedBox(
+                      width: 84,
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(icon, color: Colors.white),
+                        const SizedBox(height: 4),
+                        Text(
+                          label,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 12, height: 1.1, color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
 }
 
 class _DayCell extends StatelessWidget {
