@@ -50,7 +50,7 @@ void main() {
     final box = tester.getRect(canvas);
 
     // Игрок синих: выбрать инструмент и коснуться поля.
-    await tester.tap(find.bySemanticsLabel('Игрок (синие)'));
+    await tester.tap(find.bySemanticsLabel('Игрок (красные)'));
     await tester.pump();
     await tester.tapAt(box.center);
     await tester.pump();

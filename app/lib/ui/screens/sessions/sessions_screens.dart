@@ -10,6 +10,7 @@ import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../../sync/api_client.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../library/library_screens.dart';
 
@@ -24,10 +25,10 @@ final sessionProvider = StreamProvider.family<TrainingSession?, String>(
 String formatWhen(DateTime? d) => d == null ? 'Без даты' : DateFormat('EEE, d MMM, HH:mm', 'ru').format(d);
 
 const phaseColors = {
-  'warmup': Color(0xFFF9A825),
-  'main': Color(0xFF1565C0),
-  'game': Color(0xFF2E7D32),
-  'cooldown': Color(0xFF6A1B9A),
+  'warmup': Color(0xFFFFB300),
+  'main': Color(0xFFE30613),
+  'game': Color(0xFF4CD27A),
+  'cooldown': Color(0xFF9E9EAA),
 };
 
 // ---------------------------------------------------------------- список
@@ -577,7 +578,7 @@ class _PlanEditor extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               diff > 0 ? 'План длиннее занятия на $diff мин' : 'До длительности занятия не хватает ${-diff} мин',
-              style: TextStyle(color: Colors.orange.shade800),
+              style: const TextStyle(color: AppColors.warn),
             ),
           ),
         if (s.blocks.isEmpty)
@@ -754,7 +755,7 @@ class _DurationBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ok = planned == target;
-    final color = ok ? Colors.green.shade700 : Colors.orange.shade800;
+    final color = ok ? AppColors.good : AppColors.warn;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: color)),

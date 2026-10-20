@@ -30,7 +30,7 @@ try {
   await fill(page, 'Название', 'Квадрат 3×1 у ворот');
   await tap(page, 'Нарисовать схему');
   await see(page, 'Выбор и перемещение');
-  await tap(page, 'Игрок (синие)');
+  await tap(page, 'Игрок (красные)');
   await rawPointer(page, async () => {
     await page.mouse.click(120, 330);
     await page.mouse.click(280, 330);

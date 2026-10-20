@@ -22,8 +22,8 @@ const fieldLabels = {
 };
 
 const schemeItemLabels = {
-  'player_a': 'Игрок (синие)',
-  'player_b': 'Игрок (красные)',
+  'player_a': 'Игрок (красные)',
+  'player_b': 'Игрок (белые)',
   'neutral': 'Нейтральный',
   'goalkeeper': 'Вратарь',
   'cone': 'Конус',
@@ -42,8 +42,9 @@ class SchemeColors {
   static const grass = Color(0xFF2E7D32);
   static const grassLight = Color(0xFF388E3C);
   static const line = Color(0xE6FFFFFF);
-  static const teamA = Color(0xFF1565C0);
-  static const teamB = Color(0xFFD32F2F);
+  // Команды на схемах — в цветах клуба: красные и белые.
+  static const teamA = Color(0xFFE30613);
+  static const teamB = Color(0xFFF2F2F2);
   static const neutral = Color(0xFFFBC02D);
   static const keeper = Color(0xFF212121);
   static const cone = Color(0xFFFF6D00);
@@ -166,12 +167,13 @@ class SchemePainter extends CustomPainter {
         canvas.drawCircle(
           p, r,
           Paint()
-            ..color = Colors.white
+            ..color = it.type == 'player_b' ? Colors.black87 : Colors.white
             ..style = PaintingStyle.stroke
             ..strokeWidth = r * 0.18,
         );
         if (it.label != null) {
-          _text(canvas, it.label!, p, r * 1.1, it.type == 'neutral' ? Colors.black : Colors.white);
+          final dark = it.type == 'neutral' || it.type == 'player_b';
+          _text(canvas, it.label!, p, r * 1.1, dark ? Colors.black : Colors.white);
         }
       case 'cone':
         final path = Path()

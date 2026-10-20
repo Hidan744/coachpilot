@@ -118,8 +118,8 @@ class CoachPilotApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
         title: 'CoachPilot',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
+        theme: AppTheme.dark(),
+        themeMode: ThemeMode.dark,
         locale: const Locale('ru'),
         supportedLocales: const [Locale('ru'), Locale('en')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,

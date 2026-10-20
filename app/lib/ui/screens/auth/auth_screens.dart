@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
 
 class _AuthScaffold extends StatelessWidget {
@@ -22,10 +23,29 @@ class _AuthScaffold extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Icon(Icons.sports_soccer, size: 56, color: t.colorScheme.primary),
-                const SizedBox(height: 12),
-                Text('CoachPilot', textAlign: TextAlign.center, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
-                Text('AI-помощник футбольного тренера', textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
+                Center(
+                  child: Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: t.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(Icons.sports_soccer, size: 46, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  AppBrand.clubName.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.labelLarge?.copyWith(color: t.colorScheme.primary, letterSpacing: 2),
+                ),
+                Text(
+                  AppBrand.appName.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.headlineLarge?.copyWith(letterSpacing: 1.5),
+                ),
+                Text('Тренерский штаб · AI-помощник', textAlign: TextAlign.center, style: t.textTheme.bodyMedium),
                 const SizedBox(height: 32),
                 Text(title, style: t.textTheme.titleLarge),
                 const SizedBox(height: 16),
@@ -200,5 +220,5 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const Scaffold(body: Center(child: Icon(Icons.sports_soccer, size: 72)));
+      const Scaffold(body: Center(child: Icon(Icons.sports_soccer, size: 72, color: AppColors.red)));
 }
