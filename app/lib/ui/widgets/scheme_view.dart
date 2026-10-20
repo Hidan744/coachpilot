@@ -9,6 +9,7 @@ import '../../data/models.dart';
 /// Пропорции площадки (ширина / высота) для каждого типа поля.
 double fieldAspect(String field) => switch (field) {
       'full' => 1.5,
+      'full_v' => 0.68,
       'half' => 1.25,
       'third' => 1.25,
       'box' => 1.6,
@@ -17,6 +18,7 @@ double fieldAspect(String field) => switch (field) {
 
 const fieldLabels = {
   'full': 'Всё поле',
+  'full_v': 'Поле (вертикально)',
   'half': 'Половина',
   'third': 'Треть',
   'box': 'Штрафная',
@@ -38,6 +40,7 @@ const schemeItemLabels = {
   'arrow_dribble': 'Ведение',
   'zone': 'Зона',
   'label': 'Подпись',
+  'pen': 'Линия от руки',
 };
 
 class SchemeColors {
@@ -185,7 +188,7 @@ class SchemePainter extends CustomPainter {
     // Сначала зоны и стрелки, сверху — игроки и инвентарь.
     final order = [
       for (var i = 0; i < items.length; i++)
-        if (items[i].type == 'zone') i,
+        if (items[i].type == 'zone' || items[i].type == 'pen') i,
       for (var i = 0; i < items.length; i++)
         if (items[i].type.startsWith('arrow_')) i,
       for (var i = 0; i < items.length; i++)
@@ -195,7 +198,7 @@ class SchemePainter extends CustomPainter {
       var it = items[i];
       final pos = positions?[i];
       if (pos != null && !it.isArrow) {
-        it = SchemeItem(type: it.type, x: pos.dx, y: pos.dy, label: it.label);
+        it = SchemeItem(type: it.type, x: pos.dx, y: pos.dy, label: it.label, color: it.color);
       }
       final dim = activeStep != null && it.isMovement && it.stepOrFirst != activeStep;
       if (dim) canvas.saveLayer(null, Paint()..color = const Color.fromRGBO(0, 0, 0, 0.25));
@@ -244,6 +247,30 @@ class SchemePainter extends CustomPainter {
           final x = left ? field.left : field.right;
           canvas.drawRect(Rect.fromLTWH(left ? x : x - bw, h / 2 - bh / 2, bw, bh), line);
           canvas.drawRect(Rect.fromLTWH(left ? x : x - sw, h / 2 - sh / 2, sw, sh), line);
+        }
+      case 'full_v':
+        // Вертикальное поле: свои ворота снизу, атака вверх.
+        canvas.drawLine(Offset(field.left, h / 2), Offset(field.right, h / 2), line);
+        canvas.drawCircle(Offset(w / 2, h / 2), field.width * 0.14, line);
+        canvas.drawCircle(Offset(w / 2, h / 2), line.strokeWidth * 1.5, line..style = PaintingStyle.fill);
+        line.style = PaintingStyle.stroke;
+        for (final top in [true, false]) {
+          final bw = field.width * 0.58, bh = field.height * 0.16;
+          final sw = field.width * 0.27, sh = field.height * 0.055;
+          final y = top ? field.top : field.bottom;
+          canvas.drawRect(Rect.fromLTWH(w / 2 - bw / 2, top ? y : y - bh, bw, bh), line);
+          canvas.drawRect(Rect.fromLTWH(w / 2 - sw / 2, top ? y : y - sh, sw, sh), line);
+          final arc = Rect.fromCenter(
+            center: Offset(w / 2, top ? y + bh : y - bh),
+            width: field.width * 0.24,
+            height: field.width * 0.16,
+          );
+          canvas.drawArc(arc, top ? 0 : math.pi, math.pi, false, line);
+          final gw = field.width * 0.12;
+          canvas.drawRect(
+            Rect.fromLTWH(w / 2 - gw / 2, top ? y - m * 0.6 : y, gw, m * 0.6),
+            Paint()..color = Colors.white.withValues(alpha: 0.5),
+          );
         }
       case 'half':
       case 'third':
@@ -294,7 +321,12 @@ class SchemePainter extends CustomPainter {
         );
         if (it.label != null) {
           final dark = it.type == 'neutral' || it.type == 'player_b';
-          _text(canvas, it.label!, p, r * 1.1, dark ? Colors.black : Colors.white);
+          // «9|Иванов»: номер в фишке, фамилия под ней.
+          final parts = it.label!.split('|');
+          _text(canvas, parts.first, p, r * (parts.first.length > 2 ? 0.8 : 1.1), dark ? Colors.black : Colors.white);
+          if (parts.length > 1 && parts[1].isNotEmpty) {
+            _caption(canvas, parts[1], p + Offset(0, r * 1.75), r * 0.85);
+          }
         }
       case 'cone':
         final path = Path()
@@ -342,6 +374,22 @@ class SchemePainter extends CustomPainter {
           ..strokeWidth = r * 0.12);
       case 'label':
         _text(canvas, it.label ?? '', p, r * 1.2, Colors.white);
+      case 'pen':
+        final pts = it.points ?? const [];
+        if (pts.length < 2) break;
+        final path = Path()..moveTo(pts.first.x * size.width, pts.first.y * size.height);
+        for (final q in pts.skip(1)) {
+          path.lineTo(q.x * size.width, q.y * size.height);
+        }
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = parseHexColor(it.color) ?? Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = r * 0.2
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round,
+        );
       default:
         if (it.type.startsWith('arrow_') && it.x2 != null && it.y2 != null) {
           _arrow(canvas, p, Offset(it.x2! * size.width, it.y2! * size.height), it.type, r);
@@ -407,6 +455,19 @@ class SchemePainter extends CustomPainter {
     }
   }
 
+  /// Подпись под фишкой: светлый текст на тёмной плашке, читается на любой траве.
+  void _caption(Canvas canvas, String text, Offset center, double size) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: TextStyle(color: Colors.white, fontSize: size, fontWeight: FontWeight.w600)),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: size * 9);
+    final rect = Rect.fromCenter(center: center, width: tp.width + size * 0.8, height: tp.height + size * 0.2);
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(size * 0.4)), Paint()..color = Colors.black.withValues(alpha: 0.55));
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+  }
+
   void _text(Canvas canvas, String text, Offset center, double size, Color color) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: TextStyle(color: color, fontSize: size, fontWeight: FontWeight.w700)),
@@ -422,6 +483,13 @@ class SchemePainter extends CustomPainter {
       old.preview != preview ||
       old.positions != positions ||
       old.activeStep != activeStep;
+}
+
+Color? parseHexColor(String? hex) {
+  if (hex == null || !hex.startsWith('#') || (hex.length != 7 && hex.length != 9)) return null;
+  final v = int.tryParse(hex.substring(1), radix: 16);
+  if (v == null) return null;
+  return Color(hex.length == 7 ? 0xFF000000 | v : v);
 }
 
 /// Значок типа элемента для палитры редактора.

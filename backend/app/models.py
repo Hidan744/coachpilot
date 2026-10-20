@@ -290,3 +290,90 @@ class PlayerAssessment(SyncMixin, Base):
     score: Mapped[int] = mapped_column(Integer)
     comment: Mapped[str] = mapped_column(Text, default="")
     assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Match(SyncMixin, Base):
+    """Матч в календаре сезона."""
+
+    __tablename__ = "matches"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"))
+    opponent: Mapped[str] = mapped_column(String(100))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    duration_min: Mapped[int] = mapped_column(Integer, default=90)
+    home: Mapped[bool] = mapped_column(Boolean, default=True)
+    venue: Mapped[str] = mapped_column(String(150), default="")
+    competition: Mapped[str] = mapped_column(String(100), default="")
+    status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    score_for: Mapped[int | None] = mapped_column(Integer)
+    score_against: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class ScheduleSlot(SyncMixin, Base):
+    """Регулярная тренировка: дни недели и время, действует в пределах дат сезона."""
+
+    __tablename__ = "schedule_slots"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(100))
+    weekdays: Mapped[list] = mapped_column(JSONB, default=list)  # 1 = понедельник … 7 = воскресенье
+    start_time: Mapped[str] = mapped_column(String(5))  # HH:MM
+    duration_min: Mapped[int] = mapped_column(Integer, default=90)
+    location: Mapped[str] = mapped_column(String(150), default="")
+    valid_from: Mapped[str | None] = mapped_column(String(10))  # YYYY-MM-DD
+    valid_to: Mapped[str | None] = mapped_column(String(10))
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class DevelopmentPlan(SyncMixin, Base):
+    """Индивидуальный план развития игрока на неделю, месяц или сезон."""
+
+    __tablename__ = "development_plans"
+
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    period: Mapped[str] = mapped_column(String(10))
+    title: Mapped[str] = mapped_column(String(150))
+    starts_on: Mapped[str | None] = mapped_column(String(10))
+    ends_on: Mapped[str | None] = mapped_column(String(10))
+    focus: Mapped[list] = mapped_column(JSONB, default=list)
+    items: Mapped[list] = mapped_column(JSONB, default=list)  # [{text, kind: goal|task, done}]
+    comment: Mapped[str] = mapped_column(Text, default="")
+    shared: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class TacticBoard(SyncMixin, Base):
+    """Тактическая доска: расстановка и движения на схеме поля."""
+
+    __tablename__ = "tactic_boards"
+
+    team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
+    match_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("matches.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(150))
+    formation: Mapped[str] = mapped_column(String(20), default="")
+    scheme: Mapped[dict] = mapped_column(JSONB, default=dict)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class ParentNote(SyncMixin, Base):
+    """Сообщение тренера родителям об игроке: питание, психология, доп. тренировки и т.п."""
+
+    __tablename__ = "parent_notes"
+
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    category: Mapped[str] = mapped_column(String(20))
+    text: Mapped[str] = mapped_column(Text)
+    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    shared: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PlayerShare(Base):
+    """Ссылка для игрока и родителей: страница только для чтения без входа в приложение."""
+
+    __tablename__ = "player_shares"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = _now_col()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

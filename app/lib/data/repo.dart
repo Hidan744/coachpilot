@@ -108,6 +108,14 @@ class Repo {
   Stream<List<PlayerAssessment>> watchAssessments(String playerId) =>
       watch(Entities.assessments, PlayerAssessment.fromJson, parentId: playerId);
 
+  Stream<List<Match>> watchMatches() => watch(Entities.matches, Match.fromJson);
+  Stream<List<ScheduleSlot>> watchSlots() => watch(Entities.slots, ScheduleSlot.fromJson);
+  Stream<List<DevelopmentPlan>> watchDevPlans(String playerId) =>
+      watch(Entities.devPlans, DevelopmentPlan.fromJson, parentId: playerId);
+  Stream<List<ParentNote>> watchParentNotes(String playerId) =>
+      watch(Entities.parentNotes, ParentNote.fromJson, parentId: playerId);
+  Stream<List<TacticBoard>> watchBoards() => watch(Entities.boards, TacticBoard.fromJson);
+
   Stream<Set<String>> watchFavoriteDrillIds() => watch(Entities.favorites, (id, j) => j['drill_id'] as String)
       .map((l) => l.toSet());
 

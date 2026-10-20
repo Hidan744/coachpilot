@@ -6,12 +6,16 @@ import 'package:go_router/go_router.dart';
 import 'core/providers.dart';
 import 'ui/screens/auth/auth_screens.dart';
 import 'ui/screens/auth/onboarding_screen.dart';
+import 'ui/screens/calendar/calendar_screen.dart';
+import 'ui/screens/calendar/import_matches_screen.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
 import 'ui/screens/profile/profile_screen.dart';
 import 'ui/screens/sessions/report_screens.dart';
 import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
+import 'ui/screens/tactics/tactics_screens.dart';
+import 'ui/screens/team/player_development.dart';
 import 'ui/screens/team/team_screens.dart';
 import 'ui/theme.dart';
 
@@ -49,6 +53,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
+      GoRoute(path: '/tactics', builder: (_, _) => const TacticsListScreen(), routes: [
+        GoRoute(path: ':id', builder: (_, s) => TacticBoardScreen(boardId: s.pathParameters['id']!)),
+      ]),
       GoRoute(path: '/run/:id', builder: (_, s) => RunScreen(sessionId: s.pathParameters['id']!)),
       GoRoute(
         path: '/attendance/:sessionId',
@@ -59,6 +66,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [
+            GoRoute(path: '/calendar', builder: (_, _) => const PlanningScreen(), routes: [
+              GoRoute(path: 'slots', builder: (_, _) => const SlotsScreen()),
+              GoRoute(
+                path: 'slot/:id',
+                builder: (_, s) => SlotFormScreen(slotId: s.pathParameters['id'] == 'new' ? null : s.pathParameters['id']),
+              ),
+              GoRoute(
+                path: 'match/:id',
+                builder: (_, s) => MatchFormScreen(
+                  matchId: s.pathParameters['id'] == 'new' ? null : s.pathParameters['id'],
+                  day: DateTime.tryParse(s.uri.queryParameters['day'] ?? ''),
+                ),
+              ),
+              GoRoute(path: 'import', builder: (_, _) => const ImportMatchesScreen()),
+            ]),
             GoRoute(path: '/sessions', builder: (_, _) => const SessionsScreen(), routes: [
               GoRoute(path: 'new', builder: (_, _) => const AiWizardScreen()),
               GoRoute(path: ':id', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
@@ -79,7 +101,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/team', builder: (_, _) => const TeamScreen(), routes: [
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),
               GoRoute(path: 'edit/:id', builder: (_, s) => TeamEditScreen(teamId: s.pathParameters['id'])),
-              GoRoute(path: 'player/:id', builder: (_, s) => PlayerScreen(playerId: s.pathParameters['id']!)),
+              GoRoute(path: 'player/:id', builder: (_, s) => PlayerScreen(playerId: s.pathParameters['id']!), routes: [
+                GoRoute(
+                  path: 'plan/:planId',
+                  builder: (_, s) => DevPlanScreen(
+                    playerId: s.pathParameters['id']!,
+                    planId: s.pathParameters['planId'] == 'new' ? null : s.pathParameters['planId'],
+                  ),
+                ),
+              ]),
             ]),
           ]),
           StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())]),
@@ -102,7 +132,7 @@ class _Shell extends StatelessWidget {
           onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
           destinations: const [
             NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Главная'),
-            NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Тренировки'),
+            NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Календарь'),
             NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Библиотека'),
             NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Команда'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Профиль'),

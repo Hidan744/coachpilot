@@ -63,6 +63,16 @@ REGISTRY: dict[str, EntitySpec] = {
         m.PlayerAssessment, s.PlayerAssessmentData,
         refs={"player_id": (m.Player, False), "session_id": (m.TrainingSession, False)},
     ),
+    "matches": EntitySpec(m.Match, s.MatchData, refs={"team_id": (m.Team, False)}),
+    "schedule_slots": EntitySpec(m.ScheduleSlot, s.ScheduleSlotData, refs={"team_id": (m.Team, False)}),
+    "development_plans": EntitySpec(
+        m.DevelopmentPlan, s.DevelopmentPlanData, refs={"player_id": (m.Player, False)}
+    ),
+    "tactic_boards": EntitySpec(
+        m.TacticBoard, s.TacticBoardData,
+        refs={"team_id": (m.Team, False), "match_id": (m.Match, False)},
+    ),
+    "parent_notes": EntitySpec(m.ParentNote, s.ParentNoteData, refs={"player_id": (m.Player, False)}),
 }
 
 

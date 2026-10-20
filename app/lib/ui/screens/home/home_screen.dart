@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
+import '../calendar/calendar_screen.dart';
 import '../sessions/sessions_screens.dart';
 
 final _allReportsProvider = StreamProvider<List<SessionReport>>(
@@ -34,6 +37,11 @@ class HomeScreen extends ConsumerWidget {
       ..sort((a, b) => (b.finishedAt ?? DateTime(2000)).compareTo(a.finishedAt ?? DateTime(2000)));
     final needReport = done.where((s) => !confirmed.contains(s.id)).take(3).toList();
     final drafts = sessions.where((s) => s.status == 'draft').length;
+    final now = DateTime.now();
+    final nextMatch = ([...ref.watch(matchesProvider).value ?? const <Match>[]]
+          ..retainWhere((m) => m.status == 'scheduled' && m.startsAt.isAfter(now.subtract(const Duration(hours: 2))))
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt)))
+        .firstOrNull;
 
     return Scaffold(
       appBar: AppBar(title: Text(name.isEmpty ? 'CoachPilot' : 'Привет, $name'), actions: const [SyncBadge()]),
@@ -67,6 +75,20 @@ class HomeScreen extends ConsumerWidget {
               ]),
             ),
           ),
+        if (nextMatch != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.sports_soccer, color: AppColors.red),
+              title: Text('Матч: ${nextMatch.opponent}'),
+              subtitle: Text([
+                DateFormat('d MMMM, EE HH:mm', 'ru').format(nextMatch.startsAt),
+                nextMatch.home ? 'дома' : 'в гостях',
+                if (teams[nextMatch.teamId] != null) teams[nextMatch.teamId]!.name,
+              ].join(' · ')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/calendar/match/${nextMatch.id}'),
+            ),
+          ),
         const SizedBox(height: 12),
         FilledButton.tonalIcon(
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(60)),
@@ -74,6 +96,26 @@ class HomeScreen extends ConsumerWidget {
           icon: const Icon(Icons.auto_awesome),
           label: const Text('Создать тренировку с AI'),
         ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              onPressed: () => context.go('/calendar'),
+              icon: const Icon(Icons.calendar_month_outlined),
+              label: const Text('Календарь'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              onPressed: () => context.push('/tactics'),
+              icon: const Icon(Icons.draw_outlined),
+              label: const Text('Тактика'),
+            ),
+          ),
+        ]),
         if (drafts > 0)
           Padding(
             padding: const EdgeInsets.only(top: 8),

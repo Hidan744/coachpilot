@@ -34,7 +34,10 @@ const phaseColors = {
 // ---------------------------------------------------------------- список
 
 class SessionsScreen extends ConsumerStatefulWidget {
-  const SessionsScreen({super.key});
+  const SessionsScreen({super.key, this.embedded = false});
+
+  /// Внутри вкладки «Календарь»: без собственной шапки.
+  final bool embedded;
 
   @override
   ConsumerState<SessionsScreen> createState() => _SessionsScreenState();
@@ -48,7 +51,7 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
     final sessions = ref.watch(sessionsProvider);
     final teams = {for (final t in ref.watch(teamsProvider).value ?? <Team>[]) t.id: t};
     return Scaffold(
-      appBar: AppBar(title: const Text('Тренировки'), actions: const [SyncBadge()]),
+      appBar: widget.embedded ? null : AppBar(title: const Text('Тренировки'), actions: const [SyncBadge()]),
       floatingActionButton: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
         FloatingActionButton.small(
           heroTag: 'manual',

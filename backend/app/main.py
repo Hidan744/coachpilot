@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.db import engine
-from app.routers import account, ai, auth, events, sync
+from app.routers import account, ai, auth, events, shares, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("coachpilot")
@@ -31,6 +31,7 @@ app.include_router(account.router)
 app.include_router(sync.router)
 app.include_router(ai.router)
 app.include_router(events.router)
+app.include_router(shares.router)
 
 
 @app.middleware("http")

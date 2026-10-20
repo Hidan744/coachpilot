@@ -21,6 +21,11 @@ class Entities {
   static const notes = 'session_notes';
   static const reports = 'session_reports';
   static const assessments = 'player_assessments';
+  static const matches = 'matches';
+  static const slots = 'schedule_slots';
+  static const devPlans = 'development_plans';
+  static const boards = 'tactic_boards';
+  static const parentNotes = 'parent_notes';
 
   /// Поле-родитель для индекса parentId в локальной БД.
   static const parentField = {
@@ -31,6 +36,11 @@ class Entities {
     notes: 'session_id',
     reports: 'session_id',
     assessments: 'player_id',
+    matches: 'team_id',
+    slots: 'team_id',
+    devPlans: 'player_id',
+    boards: 'team_id',
+    parentNotes: 'player_id',
   };
 
   /// Сущности, где сервер не перезаписывает правку молча, а возвращает конфликт.
@@ -193,7 +203,23 @@ class SchemeItem {
   /// Шаг анимации для стрелок: стрелки одного шага проигрываются одновременно.
   final int? step;
 
-  const SchemeItem({required this.type, required this.x, required this.y, this.x2, this.y2, this.label, this.step});
+  /// Линия от руки (тип pen): точки в координатах поля.
+  final List<Offset2>? points;
+
+  /// Цвет линии от руки: #RRGGBB.
+  final String? color;
+
+  const SchemeItem({
+    required this.type,
+    required this.x,
+    required this.y,
+    this.x2,
+    this.y2,
+    this.label,
+    this.step,
+    this.points,
+    this.color,
+  });
 
   bool get isArrow => type.startsWith('arrow_') || type == 'zone';
   bool get isMovement => type.startsWith('arrow_');
@@ -209,6 +235,10 @@ class SchemeItem {
         y2: (j['y2'] as num?)?.toDouble(),
         label: j['label'],
         step: (j['step'] as num?)?.toInt(),
+        points: (j['points'] as List?)
+            ?.map((p) => Offset2(((p as List)[0] as num).toDouble(), (p[1] as num).toDouble()))
+            .toList(),
+        color: j['color'],
       );
 
   Json toJson() => {
@@ -219,7 +249,11 @@ class SchemeItem {
         if (y2 != null) 'y2': y2,
         if (label != null) 'label': label,
         if (step != null) 'step': step,
+        if (points != null) 'points': [for (final p in points!) [_r(p.x), _r(p.y)]],
+        if (color != null) 'color': color,
       };
+
+  static double _r(double v) => (v * 1000).roundToDouble() / 1000;
 
   SchemeItem moved(double dx, double dy) => SchemeItem(
         type: type,
@@ -229,13 +263,25 @@ class SchemeItem {
         y2: y2 == null ? null : y2! + dy,
         label: label,
         step: step,
+        points: points?.map((p) => Offset2(p.x + dx, p.y + dy)).toList(),
+        color: color,
       );
 
-  SchemeItem withStep(int? s) => SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: label, step: s);
+  SchemeItem withStep(int? s) =>
+      SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: label, step: s, points: points, color: color);
+
+  SchemeItem withLabel(String? l) =>
+      SchemeItem(type: type, x: x, y: y, x2: x2, y2: y2, label: l, step: step, points: points, color: color);
+}
+
+/// Точка линии от руки (без зависимости моделей от Flutter).
+class Offset2 {
+  const Offset2(this.x, this.y);
+  final double x, y;
 }
 
 class Scheme {
-  final String field; // full | half | third | box | grid
+  final String field; // full | full_v | half | third | box | grid
   final List<SchemeItem> items;
 
   const Scheme({this.field = 'half', this.items = const []});
@@ -681,5 +727,340 @@ class PlayerAssessment implements Entity {
         'score': score,
         'comment': comment,
         'assessed_at': _iso(assessedAt),
+      };
+}
+
+// ---------------------------------------------------------------- календарь
+
+String? _day(DateTime? d) => d == null
+    ? null
+    : '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+DateTime? _parseDay(dynamic v) => v == null ? null : DateTime.tryParse(v as String);
+
+class MatchStatus {
+  static const labels = {'scheduled': 'Запланирован', 'played': 'Сыгран', 'cancelled': 'Отменён'};
+}
+
+class Match implements Entity {
+  @override
+  final String id;
+  final String teamId;
+  final String opponent;
+  final DateTime startsAt;
+  final int durationMin;
+  final bool home;
+  final String venue, competition, status, notes;
+  final int? scoreFor, scoreAgainst;
+
+  Match({
+    required this.id,
+    required this.teamId,
+    required this.opponent,
+    required this.startsAt,
+    this.durationMin = 90,
+    this.home = true,
+    this.venue = '',
+    this.competition = '',
+    this.status = 'scheduled',
+    this.scoreFor,
+    this.scoreAgainst,
+    this.notes = '',
+  });
+
+  bool get hasScore => scoreFor != null && scoreAgainst != null;
+  String get score => hasScore ? '$scoreFor:$scoreAgainst' : '';
+
+  factory Match.fromJson(String id, Json j) => Match(
+        id: id,
+        teamId: j['team_id'],
+        opponent: j['opponent'] ?? '',
+        startsAt: _date(j['starts_at']) ?? DateTime.now(),
+        durationMin: j['duration_min'] ?? 90,
+        home: j['home'] ?? true,
+        venue: j['venue'] ?? '',
+        competition: j['competition'] ?? '',
+        status: j['status'] ?? 'scheduled',
+        scoreFor: j['score_for'],
+        scoreAgainst: j['score_against'],
+        notes: j['notes'] ?? '',
+      );
+
+  @override
+  Json toJson() => {
+        'team_id': teamId,
+        'opponent': opponent,
+        'starts_at': _iso(startsAt),
+        'duration_min': durationMin,
+        'home': home,
+        'venue': venue,
+        'competition': competition,
+        'status': status,
+        'score_for': scoreFor,
+        'score_against': scoreAgainst,
+        'notes': notes,
+      };
+}
+
+class Weekdays {
+  static const short = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+}
+
+/// Регулярная тренировка: дни недели и время, действует в пределах дат сезона.
+class ScheduleSlot implements Entity {
+  @override
+  final String id;
+  final String teamId;
+  final String title;
+  final List<int> weekdays;
+  final String startTime; // HH:MM
+  final int durationMin;
+  final String location;
+  final DateTime? validFrom, validTo;
+  final String notes;
+
+  ScheduleSlot({
+    required this.id,
+    required this.teamId,
+    required this.title,
+    required this.weekdays,
+    required this.startTime,
+    this.durationMin = 90,
+    this.location = '',
+    this.validFrom,
+    this.validTo,
+    this.notes = '',
+  });
+
+  int get startMinutes {
+    final p = startTime.split(':');
+    return int.parse(p[0]) * 60 + int.parse(p[1]);
+  }
+
+  String get endTime {
+    final m = startMinutes + durationMin;
+    return '${(m ~/ 60 % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  }
+
+  String get daysLabel => weekdays.map((d) => Weekdays.short[d]).join(', ');
+
+  /// Идёт ли тренировка в этот день (дата без времени).
+  bool occursOn(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    if (!weekdays.contains(d.weekday)) return false;
+    if (validFrom != null && d.isBefore(DateTime(validFrom!.year, validFrom!.month, validFrom!.day))) return false;
+    if (validTo != null && d.isAfter(DateTime(validTo!.year, validTo!.month, validTo!.day))) return false;
+    return true;
+  }
+
+  factory ScheduleSlot.fromJson(String id, Json j) => ScheduleSlot(
+        id: id,
+        teamId: j['team_id'],
+        title: j['title'] ?? '',
+        weekdays: ((j['weekdays'] as List?) ?? []).map((e) => (e as num).toInt()).toList(),
+        startTime: j['start_time'] ?? '10:00',
+        durationMin: j['duration_min'] ?? 90,
+        location: j['location'] ?? '',
+        validFrom: _parseDay(j['valid_from']),
+        validTo: _parseDay(j['valid_to']),
+        notes: j['notes'] ?? '',
+      );
+
+  @override
+  Json toJson() => {
+        'team_id': teamId,
+        'title': title,
+        'weekdays': (weekdays.toSet().toList()..sort()),
+        'start_time': startTime,
+        'duration_min': durationMin,
+        'location': location,
+        'valid_from': _day(validFrom),
+        'valid_to': _day(validTo),
+        'notes': notes,
+      };
+}
+
+// ---------------------------------------------------------------- развитие игрока
+
+class PlanPeriods {
+  static const all = {'week': 'Неделя', 'month': 'Месяц', 'season': 'Сезон'};
+}
+
+class PlanItem {
+  final String text;
+  final String kind; // goal | task
+  final bool done;
+
+  const PlanItem({required this.text, this.kind = 'task', this.done = false});
+
+  factory PlanItem.fromJson(Json j) => PlanItem(text: j['text'] ?? '', kind: j['kind'] ?? 'task', done: j['done'] ?? false);
+
+  Json toJson() => {'text': text, 'kind': kind, 'done': done};
+
+  PlanItem copyWith({String? text, String? kind, bool? done}) =>
+      PlanItem(text: text ?? this.text, kind: kind ?? this.kind, done: done ?? this.done);
+}
+
+/// Индивидуальный план развития игрока на неделю, месяц или сезон.
+class DevelopmentPlan implements Entity {
+  @override
+  final String id;
+  final String playerId;
+  final String period;
+  final String title;
+  final DateTime? startsOn, endsOn;
+  final List<String> focus;
+  final List<PlanItem> items;
+  final String comment;
+
+  /// Видно игроку и родителям по ссылке.
+  final bool shared;
+
+  DevelopmentPlan({
+    required this.id,
+    required this.playerId,
+    required this.period,
+    required this.title,
+    this.startsOn,
+    this.endsOn,
+    this.focus = const [],
+    this.items = const [],
+    this.comment = '',
+    this.shared = true,
+  });
+
+  int get doneCount => items.where((i) => i.done).length;
+
+  factory DevelopmentPlan.fromJson(String id, Json j) => DevelopmentPlan(
+        id: id,
+        playerId: j['player_id'],
+        period: j['period'] ?? 'week',
+        title: j['title'] ?? '',
+        startsOn: _parseDay(j['starts_on']),
+        endsOn: _parseDay(j['ends_on']),
+        focus: _strList(j['focus']),
+        items: ((j['items'] as List?) ?? []).map((e) => PlanItem.fromJson(e as Json)).toList(),
+        comment: j['comment'] ?? '',
+        shared: j['shared'] ?? true,
+      );
+
+  @override
+  Json toJson() => {
+        'player_id': playerId,
+        'period': period,
+        'title': title,
+        'starts_on': _day(startsOn),
+        'ends_on': _day(endsOn),
+        'focus': focus,
+        'items': items.map((i) => i.toJson()).toList(),
+        'comment': comment,
+        'shared': shared,
+      };
+
+  DevelopmentPlan copyWith({List<PlanItem>? items}) => DevelopmentPlan(
+        id: id,
+        playerId: playerId,
+        period: period,
+        title: title,
+        startsOn: startsOn,
+        endsOn: endsOn,
+        focus: focus,
+        items: items ?? this.items,
+        comment: comment,
+        shared: shared,
+      );
+}
+
+// ---------------------------------------------------------------- тактика
+
+class TacticBoard implements Entity {
+  @override
+  final String id;
+  final String? teamId, matchId;
+  final String title;
+  final String formation;
+  final Scheme scheme;
+  final String notes;
+  final DateTime? updatedAt;
+
+  TacticBoard({
+    required this.id,
+    this.teamId,
+    this.matchId,
+    required this.title,
+    this.formation = '',
+    this.scheme = const Scheme(field: 'full_v'),
+    this.notes = '',
+    this.updatedAt,
+  });
+
+  factory TacticBoard.fromJson(String id, Json j) => TacticBoard(
+        id: id,
+        teamId: j['team_id'],
+        matchId: j['match_id'],
+        title: j['title'] ?? '',
+        formation: j['formation'] ?? '',
+        scheme: Scheme.fromJson((j['scheme'] as Json?) ?? const {'field': 'full_v'}),
+        notes: j['notes'] ?? '',
+      );
+
+  @override
+  Json toJson() => {
+        'team_id': teamId,
+        'match_id': matchId,
+        'title': title,
+        'formation': formation,
+        'scheme': scheme.toJson(),
+        'notes': notes,
+      };
+}
+
+// ---------------------------------------------------------------- родителям
+
+class ParentNoteCategories {
+  static const all = {
+    'general': 'Общее',
+    'psychology': 'Психология',
+    'nutrition': 'Питание',
+    'extra_training': 'Доп. тренировки',
+    'health': 'Здоровье',
+    'behavior': 'Дисциплина',
+  };
+}
+
+/// Сообщение тренера родителям об игроке.
+class ParentNote implements Entity {
+  @override
+  final String id;
+  final String playerId;
+  final String category;
+  final String text;
+  final DateTime writtenAt;
+  final bool shared;
+
+  ParentNote({
+    required this.id,
+    required this.playerId,
+    required this.category,
+    required this.text,
+    required this.writtenAt,
+    this.shared = true,
+  });
+
+  factory ParentNote.fromJson(String id, Json j) => ParentNote(
+        id: id,
+        playerId: j['player_id'],
+        category: j['category'] ?? 'general',
+        text: j['text'] ?? '',
+        writtenAt: _date(j['written_at']) ?? DateTime.now(),
+        shared: j['shared'] ?? true,
+      );
+
+  @override
+  Json toJson() => {
+        'player_id': playerId,
+        'category': category,
+        'text': text,
+        'written_at': _iso(writtenAt),
+        'shared': shared,
       };
 }

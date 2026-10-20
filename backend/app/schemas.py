@@ -99,19 +99,22 @@ class SchemeItem(BaseModel):
 
     type: Literal[
         "player_a", "player_b", "neutral", "goalkeeper", "cone", "ball", "goal",
-        "mini_goal", "pole", "arrow_pass", "arrow_run", "arrow_dribble", "zone", "label",
+        "mini_goal", "pole", "arrow_pass", "arrow_run", "arrow_dribble", "zone", "label", "pen",
     ]
     x: float = Field(ge=-0.1, le=1.1)
     y: float = Field(ge=-0.1, le=1.1)
     x2: float | None = Field(default=None, ge=-0.1, le=1.1)
     y2: float | None = Field(default=None, ge=-0.1, le=1.1)
-    label: str | None = Field(default=None, max_length=20)
+    label: str | None = Field(default=None, max_length=30)
+    # Линия от руки (тактическая доска): точки [[x, y], ...] в тех же координатах.
+    points: list[list[float]] | None = Field(default=None, max_length=500)
+    color: str | None = Field(default=None, max_length=9)
     # Шаг анимации для стрелок движения: стрелки одного шага проигрываются одновременно.
     step: int | None = Field(default=None, ge=1, le=20)
 
 
 class Scheme(BaseModel):
-    field: Literal["full", "half", "third", "box", "grid"] = "half"
+    field: Literal["full", "full_v", "half", "third", "box", "grid"] = "half"
     items: list[SchemeItem] = Field(default_factory=list, max_length=200)
 
 
@@ -218,11 +221,88 @@ class PlayerAssessmentData(BaseModel):
     assessed_at: datetime
 
 
+DateStr = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class MatchData(BaseModel):
+    team_id: uuid.UUID
+    opponent: str = Field(min_length=1, max_length=100)
+    starts_at: datetime
+    duration_min: int = Field(default=90, ge=10, le=240)
+    home: bool = True
+    venue: str = Field(default="", max_length=150)
+    competition: str = Field(default="", max_length=100)
+    status: Literal["scheduled", "played", "cancelled"] = "scheduled"
+    score_for: int | None = Field(default=None, ge=0, le=99)
+    score_against: int | None = Field(default=None, ge=0, le=99)
+    notes: str = TextStr
+
+
+class ScheduleSlotData(BaseModel):
+    team_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=100)
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    start_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    duration_min: int = Field(default=90, ge=10, le=300)
+    location: str = Field(default="", max_length=150)
+    valid_from: str | None = DateStr
+    valid_to: str | None = DateStr
+    notes: str = TextStr
+
+    @field_validator("weekdays")
+    @classmethod
+    def _days(cls, v: list[int]) -> list[int]:
+        if any(d < 1 or d > 7 for d in v):
+            raise ValueError("weekday must be 1..7")
+        return sorted(set(v))
+
+
+class PlanItem(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    kind: Literal["goal", "task"] = "task"
+    done: bool = False
+
+
+class DevelopmentPlanData(BaseModel):
+    player_id: uuid.UUID
+    period: Literal["week", "month", "season"]
+    title: str = Field(min_length=1, max_length=150)
+    starts_on: str | None = DateStr
+    ends_on: str | None = DateStr
+    focus: list[str] = StrList
+    items: list[PlanItem] = Field(default_factory=list, max_length=60)
+    comment: str = TextStr
+    shared: bool = True
+
+
+class TacticBoardData(BaseModel):
+    team_id: uuid.UUID | None = None
+    match_id: uuid.UUID | None = None
+    title: str = Field(min_length=1, max_length=150)
+    formation: str = Field(default="", max_length=20)
+    scheme: Scheme = Field(default_factory=Scheme)
+    notes: str = TextStr
+
+
+class ParentNoteData(BaseModel):
+    player_id: uuid.UUID
+    category: Literal["general", "psychology", "nutrition", "extra_training", "health", "behavior"]
+    text: str = Field(min_length=1, max_length=5000)
+    written_at: datetime
+    shared: bool = True
+
+
+class ShareOut(BaseModel):
+    token: str
+    url: str
+
+
 # -------------------------------------------------------------------- синхронизация
 
 EntityName = Literal[
     "teams", "players", "drills", "favorites", "training_sessions", "attendance",
     "session_notes", "session_reports", "player_assessments",
+    "matches", "schedule_slots", "development_plans", "tactic_boards", "parent_notes",
 ]
 
 

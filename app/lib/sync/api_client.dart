@@ -84,6 +84,8 @@ class ApiClient {
 
   Future<dynamic> patch(String path, Object body) => _send('PATCH', path, body: body);
 
+  Future<dynamic> delete(String path) => _send('DELETE', path);
+
   /// Запрос без авторизации (вход, регистрация).
   Future<dynamic> postPublic(String path, Object body) => _send('POST', path, body: body, auth: false);
 

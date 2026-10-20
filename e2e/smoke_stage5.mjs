@@ -3,7 +3,8 @@ import { launch, fill, tap, see, shot, step, registerWithTeam, apiLogin, API, go
 const { browser, context, page } = await launch();
 try {
   const email = await registerWithTeam(page, { team: 'U12 Звезда' });
-  await tap(page, 'Тренировки');
+  await tap(page, 'Календарь');
+  await tap(page, 'Тренировки', { exact: true });
   await see(page, 'Запланированных тренировок нет');
   await tap(page, 'Создать с AI');
   await see(page, 'Цель занятия');

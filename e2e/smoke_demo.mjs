@@ -1,5 +1,5 @@
 // Демо-версия без сервера: весь цикл работает в браузере, данные переживают перезагрузку.
-import { launch, open, fill, tap, see, shot, step, enableSemantics } from './lib.mjs';
+import { launch, open, fill, tap, see, shot, step, enableSemantics, go } from './lib.mjs';
 
 const URL = process.env.DEMO_URL ?? 'http://localhost:8081';
 const { browser, page } = await launch();
@@ -44,6 +44,30 @@ try {
   await see(page, 'Вы в демо-режиме');
   await shot(page, 'demo-profile');
   step('после перезагрузки данные на месте');
+
+  // Новое в демо: матч в календаре, доска, сообщение родителям текстом
+  await go(page, '/calendar');
+  await tap(page, 'Добавить');
+  await tap(page, 'Соперник, дата, стадион');
+  await fill(page, 'Соперник', 'Звезда U10');
+  await tap(page, 'Сохранить', { exact: true });
+  await see(page, 'Звезда U10');
+  await tap(page, 'Тактическая доска');
+  await tap(page, 'Новая доска');
+  await see(page, 'Поле тактической доски');
+  await go(page, '/team');
+  await tap(page, 'Игрок');
+  await fill(page, 'Имя', 'Коля');
+  await tap(page, 'Сохранить', { exact: true });
+  await tap(page, 'Коля');
+  await tap(page, 'Написать');
+  await fill(page, 'Текст', 'Больше сна перед игрой');
+  await tap(page, 'Сохранить', { exact: true });
+  await tap(page, 'Ссылка для родителей');
+  await see(page, 'В демо-режиме можно отправить родителям текст');
+  await see(page, 'Больше сна перед игрой');
+  await shot(page, 'demo-parents');
+  step('календарь, доска и текст для родителей в демо');
   console.log('DEMO E2E: OK');
 } catch (e) {
   await shot(page, 'failure');

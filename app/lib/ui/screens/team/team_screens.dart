@@ -8,6 +8,7 @@ import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../widgets/common.dart';
 import 'import_players_screen.dart';
+import 'player_development.dart';
 import 'team_form.dart';
 
 final playersProvider = StreamProvider.family<List<Player>, String>(
@@ -411,6 +412,8 @@ class PlayerScreen extends ConsumerWidget {
             trailing: const Icon(Icons.edit_note),
             onTap: () => _editNotes(context, ref, p),
           ),
+          DevelopmentSection(p),
+          ParentSection(p, present: present, total: total),
           const SectionTitle('Оценки навыков'),
           if (bySkill.isEmpty)
             const Padding(padding: EdgeInsets.all(16), child: Text('Оценок пока нет. Шкала 1–5, с датой и комментарием.')),
@@ -420,7 +423,7 @@ class PlayerScreen extends ConsumerWidget {
               subtitle: Text([
                 DateFormat('d MMM yyyy', 'ru').format(e.value.first.assessedAt),
                 if (e.value.first.comment.isNotEmpty) e.value.first.comment,
-                if (e.value.length > 1) 'история: ${e.value.reversed.map((a) => a.score).join(' → ')}',
+                if (e.value.length > 1) 'история: ${e.value.reversed.map((a) => a.score).join(', ')}',
               ].join('\n')),
               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 if (e.value.length > 1) _Trend(e.value.first.score - e.value[1].score),

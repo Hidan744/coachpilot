@@ -21,6 +21,8 @@ services:
     environment:
       CP_ENV: prod
       CP_DATABASE_URL: postgresql+asyncpg://coachpilot:${DB_PASSWORD}@db:5432/coachpilot
+      # Ссылки для родителей ведут на https-адрес API (за Caddy запрос приходит по http).
+      CP_PUBLIC_BASE_URL: https://${DOMAIN}
     depends_on:
       db: {condition: service_healthy}
 

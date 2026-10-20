@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # Внешний адрес API для ссылок родителям (https://api.example.ru). Пусто — адрес из запроса.
+    public_base_url: str = ""
+    # Часовой пояс для дат на странице родителей (Пермь — Asia/Yekaterinburg).
+    display_tz: str = "Europe/Moscow"
+
     # AI: mock | yandexgpt | gigachat | openai_compat
     ai_provider: str = "mock"
     ai_api_key: str = ""
