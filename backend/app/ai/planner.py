@@ -12,7 +12,6 @@ import logging
 import re
 import time
 import uuid
-from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi.encoders import jsonable_encoder
@@ -23,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models as m
 from app.ai import rules
 from app.ai.providers import LLMProvider, ProviderError
+from app.ai.quota import quota_ok
 from app.schemas import DRILL_CATEGORIES, DrillData, TrainingBlock
 
 log = logging.getLogger("coachpilot.ai")
@@ -368,16 +368,6 @@ def to_blocks(ans: AIAnswer, aliases: dict[str, m.Drill]) -> list[TrainingBlock]
     return out
 
 
-async def _quota_ok(db: AsyncSession, owner_id) -> tuple[bool, m.Subscription | None]:
-    sub = await db.get(m.Subscription, owner_id, with_for_update=True)
-    if sub is None:
-        return True, None
-    now = datetime.now(UTC)
-    if (now.year, now.month) != (sub.period_start.year, sub.period_start.month):
-        sub.ai_used, sub.period_start = 0, now
-    return sub.ai_used < sub.ai_quota_month, sub
-
-
 async def generate_plan(db: AsyncSession, provider: LLMProvider, owner_id, req: PlanRequest) -> PlanOut:
     candidates = await select_candidates(db, owner_id, req)
     history, recent, names = await team_history(db, owner_id, req.team_id)
@@ -401,7 +391,7 @@ async def generate_plan(db: AsyncSession, provider: LLMProvider, owner_id, req: 
     if not req.use_ai:
         return by_rules(None)
 
-    ok, sub = await _quota_ok(db, owner_id)
+    ok, sub = await quota_ok(db, owner_id)
     if not ok:
         return by_rules("Лимит AI-генераций на этот месяц исчерпан — план собран по правилам из библиотеки.")
 

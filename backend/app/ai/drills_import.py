@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models as m
 from app.ai.planner import FORBIDDEN, extract_json
 from app.ai.providers import LLMProvider, ProviderError
+from app.ai.quota import quota_ok
 from app.schemas import DRILL_CATEGORIES, DrillData
 
 SYSTEM_PROMPT = f"""Ты помогаешь футбольному тренеру перенести его упражнения в библиотеку приложения.
@@ -95,8 +96,8 @@ async def parse_drills(db: AsyncSession, provider: LLMProvider, owner_id, req: P
     entry = m.AIRequest(user_id=owner_id, kind="drills_import", provider=provider.name, model="")
     started = time.monotonic()
     try:
-        sub = await db.get(m.Subscription, owner_id, with_for_update=True)
-        if sub is not None and sub.ai_used >= sub.ai_quota_month:
+        ok, sub = await quota_ok(db, owner_id)
+        if not ok:
             entry.error = "quota"
             warning = "Лимит AI на месяц исчерпан — текст разобран без AI."
             return ParseOut(drills=[], source="manual", warnings=[warning])

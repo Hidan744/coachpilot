@@ -296,3 +296,21 @@ async def test_drills_parse_ai_and_fallback(client, provider):
     provider.scripted = ["не json"]
     out = (await client.post("/ai/drills/parse", headers=h, json={"text": text})).json()
     assert out["source"] == "manual" and out["drills"] == [] and out["warnings"]
+
+
+async def test_quota_resets_in_new_month_for_report_and_drills(client, provider):
+    """Лимит, исчерпанный в прошлом месяце, обнуляется в отчёте и импорте упражнений, а не только в планах."""
+    h, _ = await make_user(client)
+    s = await _session_with_players(client, h)
+    text = "Квадрат 4 на 2\nЧетверо держат мяч"
+    for path, body in (("/ai/report", {"session_id": str(s), "went_well": "Темп"}),
+                       ("/ai/drills/parse", {"text": text})):
+        async with SessionLocal() as db:
+            sub = (await db.scalars(select(m.Subscription))).one()
+            sub.ai_used = sub.ai_quota_month
+            sub.period_start = sub.period_start.replace(year=sub.period_start.year - 1)
+            await db.commit()
+        out = (await client.post(path, headers=h, json=body)).json()
+        assert out["source"] == "ai", (path, out)
+        async with SessionLocal() as db:
+            assert (await db.scalars(select(m.Subscription))).one().ai_used == 1, path

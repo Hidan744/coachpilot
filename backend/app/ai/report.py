@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import models as m
 from app.ai.planner import FORBIDDEN, extract_json, stem
 from app.ai.providers import LLMProvider, ProviderError
+from app.ai.quota import quota_ok
 
 SYSTEM_PROMPT = """Ты помогаешь футбольному тренеру оформить отчёт о проведённом занятии на русском языке.
 Используй только то, что написал тренер, и данные о занятии. Не придумывай факты, оценки и показатели игроков.
@@ -120,8 +121,8 @@ async def structure_report(db: AsyncSession, provider: LLMProvider, owner_id, re
     entry = m.AIRequest(user_id=owner_id, kind="report", provider=provider.name, model="")
     started = time.monotonic()
     try:
-        sub = await db.get(m.Subscription, owner_id, with_for_update=True)
-        if sub is not None and sub.ai_used >= sub.ai_quota_month:
+        ok, sub = await quota_ok(db, owner_id)
+        if not ok:
             entry.error = "quota"
             return ReportOut(went_well=req.went_well, to_improve=req.to_improve, observations=req.observations,
                              suggestions=[], source="manual",
