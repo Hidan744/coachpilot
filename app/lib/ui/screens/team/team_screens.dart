@@ -6,6 +6,7 @@ import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../widgets/common.dart';
+import '../../widgets/team_switcher.dart';
 import 'import_players_screen.dart';
 import 'team_dashboard.dart';
 import 'team_form.dart';
@@ -72,16 +73,7 @@ class TeamScreen extends ConsumerWidget {
       initialIndex: initialTab.clamp(0, 2),
       child: Scaffold(
         appBar: AppBar(
-          title: teams.length > 1
-              ? DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: team.id,
-                    style: Theme.of(context).textTheme.titleLarge,
-                    items: [for (final t in teams) DropdownMenuItem(value: t.id, child: Text(t.name))],
-                    onChanged: (id) => ref.read(currentTeamIdProvider.notifier).select(id!),
-                  ),
-                )
-              : Text(team.name),
+          title: Text(team.name),
           actions: [
             PopupMenuButton<String>(
               onSelected: (v) async {
@@ -118,7 +110,14 @@ class TeamScreen extends ConsumerWidget {
             ),
             const SyncBadge(),
           ],
-          bottom: const TabBar(tabs: [Tab(text: 'Состав'), Tab(text: 'Дашборд'), Tab(text: 'Статистика')]),
+          // Если команд несколько — переключатель на виду, над вкладками.
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(teams.length > 1 ? 100 : 48),
+            child: Column(children: [
+              if (teams.length > 1) const TeamSwitcher(padding: EdgeInsets.fromLTRB(16, 4, 16, 8)),
+              const TabBar(tabs: [Tab(text: 'Состав'), Tab(text: 'Дашборд'), Tab(text: 'Статистика')]),
+            ]),
+          ),
         ),
         floatingActionButton: Builder(
           // Кнопка «Игрок» — только на вкладке состава.

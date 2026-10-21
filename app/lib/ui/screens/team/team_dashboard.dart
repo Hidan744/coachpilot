@@ -348,7 +348,7 @@ class TeamDashboard extends ConsumerWidget {
     final rows = <(Player, int, int)>[];
     for (final p in players) {
       var present = 0, total = 0;
-      for (final a in marks.where((a) => a.playerId == p.id)) {
+      for (final a in marks.where((a) => a.playerId == p.id && a.status != 'excused')) {
         final s = sessions[a.sessionId];
         final at = s?.startedAt ?? s?.scheduledAt;
         if (at == null || at.isBefore(from)) continue;
@@ -358,7 +358,11 @@ class TeamDashboard extends ConsumerWidget {
       if (total > 0) rows.add((p, present, total));
     }
     rows.sort((a, b) => (a.$2 / a.$3).compareTo(b.$2 / b.$3));
-    _details(context, 'Посещаемость', 'За 4 недели, сначала — кто пропускает чаще. Нажмите на игрока.', [
+    _details(
+        context,
+        'Посещаемость',
+        'Как считается: был на тренировке (вовремя или с опозданием) ÷ все отмеченные тренировки за 4 недели. '
+            'Пропуск по уважительной причине не портит процент. Сначала — кто пропускает чаще.', [
       for (final (p, present, total) in rows)
         _DetailRow(
           title: p.fullName,

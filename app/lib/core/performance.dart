@@ -295,6 +295,7 @@ int? overallScore(Map<String, int?> categories, int? physical) {
 DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
 
 /// Посещаемость по неделям: [weeks] последних недель → доля (0..1) или null, если занятий не было.
+/// Доля = был (вовремя или с опозданием) / отмеченные занятия; пропуск по уважительной причине не учитывается.
 List<(DateTime, double?)> attendanceByWeek(
   Iterable<Attendance> marks,
   Map<String, TrainingSession> sessions, {
@@ -306,6 +307,7 @@ List<(DateTime, double?)> attendanceByWeek(
   final present = List.filled(weeks, 0), total = List.filled(weeks, 0);
   for (final a in marks) {
     if (playerId != null && a.playerId != playerId) continue;
+    if (a.status == 'excused') continue;
     final s = sessions[a.sessionId];
     final at = s?.startedAt ?? s?.scheduledAt;
     if (at == null) continue;

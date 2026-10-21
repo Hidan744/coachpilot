@@ -9,6 +9,7 @@ import '../../../core/calendar.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../theme.dart';
+import '../../widgets/team_switcher.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
@@ -52,6 +53,8 @@ class HomeScreen extends ConsumerWidget {
               children: [
           a(_Hero(name: auth.name, team: team, teamCount: teams.length)),
           const SizedBox(height: 12),
+          // Несколько команд — переключение одним касанием, всё ниже показывается по выбранной.
+          if (teams.length > 1) ...[const TeamSwitcher(), const SizedBox(height: 8)],
           if (running != null) ...[
             a(_RunningCard(session: running)),
             const SizedBox(height: 12),
@@ -152,7 +155,7 @@ class _Hero extends ConsumerWidget {
             if (team != null)
               InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: () => teamCount > 1 ? _pickTeam(context, ref) : context.go('/team'),
+                onTap: () => context.go('/team'),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(20)),
@@ -166,7 +169,7 @@ class _Hero extends ConsumerWidget {
                           : '${team!.name} · ${AgeGroups.label(team!.ageGroup)}',
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                     ),
-                    if (teamCount > 1) const Icon(Icons.expand_more, color: Colors.white, size: 18),
+                    const Icon(Icons.chevron_right, color: Colors.white, size: 18),
                   ]),
                 ),
               ),
@@ -176,24 +179,6 @@ class _Hero extends ConsumerWidget {
     );
   }
 
-  void _pickTeam(BuildContext context, WidgetRef ref) => showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        builder: (c) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final t in ref.read(teamsProvider).value ?? const <Team>[])
-              ListTile(
-                leading: const Icon(Icons.shield_outlined),
-                title: Text(t.name),
-                trailing: t.id == team?.id ? const Icon(Icons.check, color: AppColors.red) : null,
-                onTap: () {
-                  ref.read(currentTeamIdProvider.notifier).select(t.id);
-                  Navigator.pop(c);
-                },
-              ),
-          ]),
-        ),
-      );
 }
 
 String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -262,10 +247,12 @@ class _NextUp extends ConsumerWidget {
     final slots = ref.watch(slotsProvider).value ?? const <ScheduleSlot>[];
     final sessions = ref.watch(sessionsProvider).value ?? const <TrainingSession>[];
     final now = DateTime.now();
+    // Ближайшее событие выбранной команды.
+    final current = ref.watch(currentTeamProvider);
     CalendarEvent? next;
     for (var d = 0; d < 14 && next == null; d++) {
       final day = dayOf(now).add(Duration(days: d));
-      next = eventsForDay(day, matches: matches, slots: slots, sessions: sessions)
+      next = eventsForDay(day, matches: matches, slots: slots, sessions: sessions, teamIds: current == null ? null : {current.id})
           .where((e) => e.end.isAfter(now) && (e.session == null || e.session!.status != 'done'))
           .firstOrNull;
     }
