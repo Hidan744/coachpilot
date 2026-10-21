@@ -21,6 +21,7 @@ class DemoFrame extends StatelessWidget {
     (Icons.person_search_outlined, 'Профиль игрока', 'ОФП-радар, программа развития, отчёт для родителей', '/team'),
     (Icons.calendar_month_outlined, 'Календарь сезона', 'Матчи, расписание команд, тренировки', '/calendar'),
     (Icons.draw_outlined, 'Тактическая доска', 'Расстановка, рисование пальцем, замены', '/tactics'),
+    (Icons.groups_2_outlined, 'Состав под тактику', 'Схема и стиль игры → лучший игрок на каждое место', '/tactics/lineup'),
     (Icons.auto_awesome, 'Тренировка с AI', 'План занятия за минуту из библиотеки упражнений', '/sessions/new'),
     (Icons.menu_book_outlined, 'Библиотека упражнений', 'Анимированные схемы, свои упражнения', '/library'),
   ];

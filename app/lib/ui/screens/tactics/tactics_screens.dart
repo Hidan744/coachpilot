@@ -9,6 +9,7 @@ import '../../../data/repo.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/scheme_view.dart';
+import 'lineup_screen.dart';
 
 final boardsProvider = StreamProvider<List<TacticBoard>>((ref) => ref.watch(repoProvider).watchBoards());
 
@@ -36,62 +37,70 @@ class TacticsListScreen extends ConsumerWidget {
       ),
       body: AsyncView(boards, builder: (all) {
         if (all.isEmpty) {
-          return EmptyState(
-            icon: Icons.draw_outlined,
-            title: 'Объясняйте игру прямо на поле',
-            text: 'Расставьте состав, нарисуйте пальцем движения, покажите замену. '
-                'Доска сохраняется и доступна на телефоне и планшете.',
-            action: FilledButton.icon(
-              onPressed: () => _create(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Создать доску'),
+          return ListView(padding: const EdgeInsets.all(12), children: [
+            const LineupEntryCard(),
+            EmptyState(
+              icon: Icons.draw_outlined,
+              title: 'Объясняйте игру прямо на поле',
+              text: 'Расставьте состав, нарисуйте пальцем движения, покажите замену. '
+                  'Доска сохраняется и доступна на телефоне и планшете.',
+              action: FilledButton.icon(
+                onPressed: () => _create(context, ref),
+                icon: const Icon(Icons.add),
+                label: const Text('Создать доску'),
+              ),
             ),
-          );
+          ]);
         }
         final list = [...all]..sort((a, b) => a.title.compareTo(b.title));
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 220,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 0.62,
-          ),
-          itemCount: list.length,
-          itemBuilder: (_, i) {
-            final b = list[i];
-            return Card(
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => context.push('/tactics/${b.id}'),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Center(
-                        child: AspectRatio(
-                          aspectRatio: fieldAspect(b.scheme.field),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CustomPaint(painter: SchemePainter(b.scheme, showSteps: false)),
+        return CustomScrollView(slivers: [
+          const SliverPadding(padding: EdgeInsets.fromLTRB(12, 12, 12, 0), sliver: SliverToBoxAdapter(child: LineupEntryCard())),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
+            sliver: SliverGrid.builder(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 220,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.62,
+              ),
+              itemCount: list.length,
+              itemBuilder: (_, i) {
+                final b = list[i];
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => context.push('/tactics/${b.id}'),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: fieldAspect(b.scheme.field),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: CustomPaint(painter: SchemePainter(b.scheme, showSteps: false)),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(b.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      if (b.formation.isNotEmpty)
-                        Text(b.formation, style: Theme.of(context).textTheme.bodySmall),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(b.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          if (b.formation.isNotEmpty)
+                            Text(b.formation, style: Theme.of(context).textTheme.bodySmall),
+                        ]),
+                      ),
                     ]),
                   ),
-                ]),
-              ),
-            );
-          },
-        );
+                );
+              },
+            ),
+          ),
+        ]);
       }),
     );
   }

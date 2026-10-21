@@ -16,6 +16,7 @@ import 'ui/screens/profile/profile_screen.dart';
 import 'ui/screens/sessions/report_screens.dart';
 import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
+import 'ui/screens/tactics/lineup_screen.dart';
 import 'ui/screens/tactics/tactics_screens.dart';
 import 'ui/screens/team/player_development.dart';
 import 'ui/screens/team/player_profile.dart';
@@ -59,6 +60,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
       GoRoute(path: '/tactics', builder: (_, _) => const TacticsListScreen(), routes: [
+        GoRoute(path: 'lineup', builder: (_, s) => LineupScreen(formation: s.uri.queryParameters['formation'])),
         GoRoute(path: ':id', builder: (_, s) => TacticBoardScreen(boardId: s.pathParameters['id']!)),
       ]),
       GoRoute(path: '/run/:id', builder: (_, s) => RunScreen(sessionId: s.pathParameters['id']!)),
