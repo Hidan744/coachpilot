@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../data/db.dart';
 import '../data/models.dart';
@@ -73,8 +74,9 @@ class SyncEngine {
     }
     try {
       await afterSync?.call(_current);
-    } catch (_) {
-      // побочные действия не должны ломать синхронизацию
+    } catch (e, st) {
+      // побочные действия не должны ломать синхронизацию, но ошибку видно в логе
+      debugPrint('afterSync failed: $e\n$st');
     }
   }
 

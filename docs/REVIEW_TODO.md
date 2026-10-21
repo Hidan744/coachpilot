@@ -115,7 +115,7 @@ pytest -q            # нужна БД coachpilot_test, адрес — в CP_DAT
 `e2e/_tmp_new.mjs` попал в коммит a3aa707, использует `localhost:8091` и не запускается в CI.
 Удалить или переименовать в `smoke_*.mjs` и добавить в цикл в `.github/workflows/ci.yml`.
 
-### [ ] 9. Ошибки, которые глотаются молча
+### [x] 9. Ошибки, которые глотаются молча
 
 В `app/lib` 10 мест `catch (_)`. Те, что в `app/lib/core/providers.dart` и
 `app/lib/sync/sync_engine.dart`, должны хотя бы логировать ошибку (`debugPrint` или

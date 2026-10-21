@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/db.dart';
@@ -235,8 +236,9 @@ class AuthController extends Notifier<AuthState> {
       _connectivity = Connectivity().onConnectivityChanged.listen((r) {
         if (!r.contains(ConnectivityResult.none)) engine.sync();
       });
-    } catch (_) {
+    } catch (e) {
       // плагин недоступен (тесты) — работает периодическая синхронизация
+      debugPrint('connectivity unavailable, periodic sync only: $e');
     }
   }
 
