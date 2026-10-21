@@ -58,6 +58,10 @@ class ApiClient {
   final http.Client _http;
   final Duration timeout;
 
+  /// Идущее обновление токенов. Refresh-токен одноразовый: параллельные запросы,
+  /// получившие 401, ждут одно общее обновление, а не отправляют один токен дважды.
+  Future<bool>? _refreshing;
+
   /// Вызывается, когда refresh-токен больше не действует и нужен повторный вход.
   void Function()? onSessionExpired;
 
@@ -93,9 +97,10 @@ class ApiClient {
       {Object? body, Map<String, String>? query, bool auth = true, bool retried = false}) async {
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     final headers = {'Content-Type': 'application/json', 'Accept': 'application/json'};
+    String? sentToken;
     if (auth) {
-      final token = await tokens.read(_access);
-      if (token != null) headers['Authorization'] = 'Bearer $token';
+      sentToken = await tokens.read(_access);
+      if (sentToken != null) headers['Authorization'] = 'Bearer $sentToken';
     }
     http.Response resp;
     try {
@@ -108,7 +113,7 @@ class ApiClient {
       throw ApiException('Нет связи с сервером. Данные сохранены на телефоне и отправятся позже.');
     }
 
-    if (resp.statusCode == 401 && auth && !retried && await _tryRefresh()) {
+    if (resp.statusCode == 401 && auth && !retried && await _refreshAfter(sentToken)) {
       return _send(method, path, body: body, query: query, auth: auth, retried: true);
     }
     if (resp.statusCode == 401 && auth) {
@@ -120,6 +125,14 @@ class ApiClient {
       throw ApiException(_errorMessage(resp.statusCode, decoded), status: resp.statusCode);
     }
     return decoded;
+  }
+
+  /// Обновляет токены после 401. Если другой запрос уже получил новый access-токен,
+  /// повторяем с ним без обновления.
+  Future<bool> _refreshAfter(String? sentToken) async {
+    final current = await tokens.read(_access);
+    if (_refreshing == null && current != null && current != sentToken) return true;
+    return _refreshing ??= _tryRefresh().whenComplete(() => _refreshing = null);
   }
 
   Future<bool> _tryRefresh() async {
