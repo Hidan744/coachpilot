@@ -163,6 +163,8 @@ class Team(SyncMixin, Base):
     field_type: Mapped[str | None] = mapped_column(String(30))
     equipment: Mapped[list] = mapped_column(JSONB, default=list)
     notes: Mapped[str] = mapped_column(Text, default="")
+    formation: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    season_goals: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class Player(SyncMixin, Base):
@@ -176,6 +178,11 @@ class Player(SyncMixin, Base):
     number: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    dominant_foot: Mapped[str | None] = mapped_column(String(10))
+    level: Mapped[str | None] = mapped_column(String(30))
+    strengths: Mapped[str] = mapped_column(Text, default="", server_default="")
+    weaknesses: Mapped[str] = mapped_column(Text, default="", server_default="")
+    goals: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 class Drill(SyncMixin, Base):

@@ -71,6 +71,11 @@ AgeGroup = str  # U6..U19, adult — свободная строка, прове
 Phase = Literal["warmup", "main", "game", "cooldown"]
 
 
+class TeamGoal(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    done: bool = False
+
+
 class TeamData(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     age_group: str = Field(min_length=1, max_length=20)
@@ -79,6 +84,8 @@ class TeamData(BaseModel):
     field_type: str | None = Field(default=None, max_length=30)
     equipment: list[str] = StrList
     notes: str = TextStr
+    formation: str = Field(default="", max_length=20)
+    season_goals: list[TeamGoal] = Field(default_factory=list, max_length=20)
 
 
 class PlayerData(BaseModel):
@@ -90,6 +97,11 @@ class PlayerData(BaseModel):
     number: int | None = Field(default=None, ge=0, le=999)
     notes: str = TextStr
     active: bool = True
+    dominant_foot: Literal["right", "left", "both"] | None = None
+    level: str | None = Field(default=None, max_length=30)
+    strengths: str = TextStr
+    weaknesses: str = TextStr
+    goals: str = TextStr
 
 
 class SchemeItem(BaseModel):

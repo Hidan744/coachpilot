@@ -99,7 +99,7 @@ class _LineupScreenState extends ConsumerState<LineupScreen> {
       );
     }
     final options = formationsFor(team.defaultPlayers);
-    final formation = _formation != null && options.contains(_formation) ? _formation! : (widget.formation != null && options.contains(widget.formation) ? widget.formation! : options[options.length > 1 ? 1 : 0]);
+    final formation = _formation != null && options.contains(_formation) ? _formation! : (widget.formation != null && options.contains(widget.formation) ? widget.formation! : (options.contains(team.formation) ? team.formation : options[options.length > 1 ? 1 : 0]));
     final data = ref.watch(lineupDataProvider((team.id, null)));
     return Scaffold(
       appBar: AppBar(title: const Text('Состав под тактику')),

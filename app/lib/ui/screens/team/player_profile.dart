@@ -361,6 +361,43 @@ class _OverviewTab extends ConsumerWidget {
       _AssessmentsCard(player: p, assessments: assessments),
       const SizedBox(height: 12),
       DashCard(
+        title: 'Профиль игрока',
+        trailing: IconButton(
+          tooltip: 'Изменить профиль',
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: () => showPlayerForm(context, ref, teamId: p.teamId, player: p),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            () {
+              final line = [
+                if (p.position != null) Positions.all[p.position] ?? p.position!,
+                if (p.dominantFoot != null) 'нога: ${Feet.all[p.dominantFoot]!.toLowerCase()}',
+                if (p.level != null) 'уровень: ${(Levels.all[p.level] ?? p.level!).toLowerCase()}',
+              ].join(' · ');
+              return line.isEmpty ? 'Позиция, ведущая нога и уровень не указаны' : line;
+            }(),
+            style: const TextStyle(color: AppColors.textMuted),
+          ),
+          for (final (label, value) in [('Сильные стороны', p.strengths), ('Зоны развития', p.weaknesses), ('Цели', p.goals)])
+            if (value.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: value),
+                ])),
+              ),
+          if (p.strengths.isEmpty && p.weaknesses.isEmpty && p.goals.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('Добавьте сильные стороны, зоны развития и цели — они попадут в рекомендации.',
+                  style: TextStyle(color: AppColors.textMuted)),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      DashCard(
         title: 'Заметки тренера',
         trailing: IconButton(
           tooltip: 'Изменить заметки',

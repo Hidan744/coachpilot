@@ -201,3 +201,20 @@ async def test_constructor_fields_roundtrip(client):
     bad = session_data()
     bad["blocks"][0]["variant"] = "insane"
     assert (await push(client, h, up("training_sessions", uuid.uuid4(), bad)))[0]["status"] == "rejected"
+
+
+async def test_team_goals_and_player_profile_roundtrip(client):
+    h, _ = await make_user(client)
+    t_id, p_id = uuid.uuid4(), uuid.uuid4()
+    t = team() | {"formation": "4-3-3", "season_goals": [{"text": "Топ-3 в лиге", "done": False}]}
+    p = {"team_id": str(t_id), "first_name": "Саша", "dominant_foot": "left", "level": "advanced",
+         "strengths": "Скорость", "weaknesses": "Игра головой", "goals": "10 голов за сезон"}
+    res = await push(client, h, up("teams", t_id, t), up("players", p_id, p))
+    assert [r["status"] for r in res] == ["applied", "applied"], res
+    recs = (await client.get("/sync/pull?since=0", headers=h)).json()["records"]
+    assert recs[0]["data"]["season_goals"] == [{"text": "Топ-3 в лиге", "done": False}]
+    assert recs[0]["data"]["formation"] == "4-3-3"
+    assert {k: recs[1]["data"][k] for k in ("dominant_foot", "level", "strengths", "goals")} == {
+        "dominant_foot": "left", "level": "advanced", "strengths": "Скорость", "goals": "10 голов за сезон"}
+    bad = p | {"dominant_foot": "hand"}
+    assert (await push(client, h, up("players", uuid.uuid4(), bad)))[0]["status"] == "rejected"

@@ -170,7 +170,7 @@ class TeamScreen extends ConsumerWidget {
                     ),
                   ]),
                 ),
-              for (final p in list) _PlayerTile(player: p, stats: attendanceStats(attendance, p.id)),
+              if (list.isNotEmpty) _RosterList(players: list, attendance: attendance),
             ]);
           }),
           TeamDashboard(team: team),
@@ -178,6 +178,83 @@ class TeamScreen extends ConsumerWidget {
         ]),
       ),
     );
+  }
+}
+
+/// Состав с поиском и фильтрами: по имени и номеру, по позиции, показывать ли выбывших.
+class _RosterList extends StatefulWidget {
+  const _RosterList({required this.players, required this.attendance});
+
+  final List<Player> players;
+  final List<Attendance> attendance;
+
+  @override
+  State<_RosterList> createState() => _RosterListState();
+}
+
+class _RosterListState extends State<_RosterList> {
+  String _query = '';
+  String? _position;
+  bool _inactive = false;
+  String _sort = 'number';
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final shown = [
+      for (final p in widget.players)
+        if ((_inactive || p.active) &&
+            (_position == null || p.position == _position) &&
+            (q.isEmpty || '${p.fullName} ${p.number ?? ''}'.toLowerCase().contains(q)))
+          p,
+    ]..sort((a, b) => switch (_sort) {
+          'name' => a.fullName.compareTo(b.fullName),
+          'attendance' => () {
+              final (ap, at) = attendanceStats(widget.attendance, a.id);
+              final (bp, bt) = attendanceStats(widget.attendance, b.id);
+              return (bt == 0 ? -1 : bp / bt).compareTo(at == 0 ? -1 : ap / at);
+            }(),
+          _ => (a.number ?? 999).compareTo(b.number ?? 999),
+        });
+    final inactive = widget.players.where((p) => !p.active).length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: TextField(
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'Поиск по имени или номеру', isDense: true),
+          onChanged: (v) => setState(() => _query = v),
+        ),
+      ),
+      SizedBox(
+        height: 48,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), children: [
+          for (final e in {null: 'Все', ...Positions.all}.entries)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(label: Text(e.value), selected: _position == e.key, onSelected: (_) => setState(() => _position = e.key)),
+            ),
+          if (inactive > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(label: Text('Выбывшие ($inactive)'), selected: _inactive, onSelected: (v) => setState(() => _inactive = v)),
+            ),
+          PopupMenuButton<String>(
+            tooltip: 'Сортировка',
+            initialValue: _sort,
+            onSelected: (v) => setState(() => _sort = v),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'number', child: Text('По номеру')),
+              PopupMenuItem(value: 'name', child: Text('По имени')),
+              PopupMenuItem(value: 'attendance', child: Text('По посещаемости')),
+            ],
+            child: const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.sort)),
+          ),
+        ]),
+      ),
+      if (shown.isEmpty)
+        const Padding(padding: EdgeInsets.all(16), child: Text('Никого не нашли — измените поиск или фильтр.')),
+      for (final p in shown) _PlayerTile(player: p, stats: attendanceStats(widget.attendance, p.id)),
+    ]);
   }
 }
 
@@ -235,6 +312,11 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
   late final _number = TextEditingController(text: widget.player?.number?.toString());
   late String? _position = widget.player?.position;
   late bool _active = widget.player?.active ?? true;
+  late String? _foot = widget.player?.dominantFoot;
+  late String? _level = widget.player?.level;
+  late final _strengths = TextEditingController(text: widget.player?.strengths);
+  late final _weaknesses = TextEditingController(text: widget.player?.weaknesses);
+  late final _goals = TextEditingController(text: widget.player?.goals);
   final _firstFocus = FocusNode();
   final _added = <String>[];
 
@@ -256,6 +338,11 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
       position: _position,
       notes: widget.player?.notes ?? '',
       active: _active,
+      dominantFoot: _foot,
+      level: _level,
+      strengths: _strengths.text.trim(),
+      weaknesses: _weaknesses.text.trim(),
+      goals: _goals.text.trim(),
     );
     await ref.read(repoProvider).put(Entities.players, p);
     if (widget.player == null) ref.read(analyticsProvider).track('player_added');
@@ -267,6 +354,9 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
         _first.clear();
         _last.clear();
         _number.clear();
+        _strengths.clear();
+        _weaknesses.clear();
+        _goals.clear();
       });
       _firstFocus.requestFocus();
     } else {
@@ -336,6 +426,49 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
                 onSelected: (s) => setState(() => _position = s ? e.key : null),
               ),
           ]),
+          // Подробный профиль — не обязателен, чтобы быстро добавлять состав.
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            initiallyExpanded: !isNew && (_foot != null || _level != null || _strengths.text.isNotEmpty || _goals.text.isNotEmpty),
+            title: const Text('Профиль: нога, уровень, сильные стороны, цели'),
+            children: [
+              Align(alignment: Alignment.centerLeft, child: Text('Ведущая нога', style: Theme.of(context).textTheme.labelLarge)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, children: [
+                for (final e in Feet.all.entries)
+                  ChoiceChip(label: Text(e.value), selected: _foot == e.key, onSelected: (s) => setState(() => _foot = s ? e.key : null)),
+              ]),
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerLeft, child: Text('Уровень подготовки', style: Theme.of(context).textTheme.labelLarge)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final e in Levels.all.entries)
+                  ChoiceChip(label: Text(e.value), selected: _level == e.key, onSelected: (s) => setState(() => _level = s ? e.key : null)),
+              ]),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _strengths,
+                maxLines: 2,
+                minLines: 1,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Сильные стороны', hintText: 'Скорость, игра левой, видение поля'),
+              ),
+              TextFormField(
+                controller: _weaknesses,
+                maxLines: 2,
+                minLines: 1,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Зоны развития', hintText: 'Игра головой, слабая нога'),
+              ),
+              TextFormField(
+                controller: _goals,
+                maxLines: 2,
+                minLines: 1,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Индивидуальные цели', hintText: 'Стабильно играть в основе к весне'),
+              ),
+            ],
+          ),
           if (!isNew)
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

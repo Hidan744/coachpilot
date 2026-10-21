@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/plan_rules.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
+import '../sessions/sessions_screens.dart';
 import '../../widgets/scheme_view.dart';
 import 'import_drills_screen.dart';
 import 'scheme_editor.dart';
@@ -27,7 +29,18 @@ final drillProvider = Provider.family<Drill?, String>(
 );
 
 class DrillFilter {
-  const DrillFilter({this.query = '', this.category, this.tab = 'all', this.fitTeam = false, this.audience});
+  const DrillFilter({
+    this.query = '',
+    this.category,
+    this.tab = 'all',
+    this.fitTeam = false,
+    this.audience,
+    this.intensities = const {},
+    this.maxDuration,
+    this.players,
+    this.age,
+    this.equipment,
+  });
 
   final String query;
   final String? category;
@@ -37,12 +50,40 @@ class DrillFilter {
   /// Раздел: kids — детско-юношеский футбол, adults — взрослые; null — по выбранной команде.
   final String? audience;
 
+  /// Подробные фильтры: интенсивность, длительность до N мин, подходит для N игроков,
+  /// возраст N лет, только с этим инвентарём (null — любой).
+  final Set<String> intensities;
+  final int? maxDuration, players, age;
+  final Set<String>? equipment;
+
+  /// Сколько подробных фильтров включено — для значка на кнопке.
+  int get extraCount =>
+      (intensities.isEmpty ? 0 : 1) + (maxDuration == null ? 0 : 1) + (players == null ? 0 : 1) + (age == null ? 0 : 1) + (equipment == null ? 0 : 1);
+
   DrillFilter copyWith({String? query, String? Function()? category, String? tab, bool? fitTeam, String? audience}) => DrillFilter(
         query: query ?? this.query,
         category: category == null ? this.category : category(),
         tab: tab ?? this.tab,
         fitTeam: fitTeam ?? this.fitTeam,
         audience: audience ?? this.audience,
+        intensities: intensities,
+        maxDuration: maxDuration,
+        players: players,
+        age: age,
+        equipment: equipment,
+      );
+
+  DrillFilter withExtra({Set<String>? intensities, int? maxDuration, int? players, int? age, Set<String>? equipment}) => DrillFilter(
+        query: query,
+        category: category,
+        tab: tab,
+        fitTeam: fitTeam,
+        audience: audience,
+        intensities: intensities ?? const {},
+        maxDuration: maxDuration,
+        players: players,
+        age: age,
+        equipment: equipment,
       );
 }
 
@@ -83,8 +124,14 @@ List<Drill> applyFilter(List<Drill> all, DrillFilter f, Set<String> favs, Team? 
     if (f.tab == 'mine' && d.isSystem) return false;
     if (f.category != null && d.category != f.category) return false;
     if (f.fitTeam && team != null && !drillFitsTeam(d, team)) return false;
+    if (f.intensities.isNotEmpty && !f.intensities.contains(d.intensity)) return false;
+    if (f.maxDuration != null && d.durationMin > f.maxDuration!) return false;
+    if (f.players != null && (f.players! < d.playersMin || f.players! > d.playersMax)) return false;
+    if (f.age != null && (f.age! < d.ageMin || f.age! > d.ageMax)) return false;
+    if (f.equipment != null && !d.equipment.every((e) => f.equipment!.contains(e))) return false;
+    // Поиск — по названию, цели, тегам, организации и шагам выполнения.
     if (q.isNotEmpty &&
-        !('${d.title} ${d.goal} ${d.tags.join(' ')}').toLowerCase().contains(q)) {
+        !('${d.title} ${d.goal} ${d.tags.join(' ')} ${d.setup} ${d.steps.join(' ')}').toLowerCase().contains(q)) {
       return false;
     }
     return true;
@@ -218,6 +265,15 @@ class LibraryScreen extends ConsumerWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  avatar: const Icon(Icons.tune, size: 18),
+                  label: Text(f.extraCount == 0 ? 'Фильтры' : 'Фильтры · ${f.extraCount}'),
+                  selected: f.extraCount > 0,
+                  onSelected: (_) => showDrillFiltersSheet(context, ref),
+                ),
+              ),
               if (team != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -444,9 +500,96 @@ class DrillScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [DrillDetails(drill)]),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            icon: const Icon(Icons.playlist_add),
+            label: const Text('Добавить в тренировку'),
+            onPressed: () => addDrillToPlan(context, ref, drill),
+          ),
+        ),
+      ),
+      body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+        DrillDetails(drill),
+        ...() {
+          final similar = similarDrills(drill, ref.watch(drillsProvider).value ?? const []);
+          if (similar.isEmpty) return <Widget>[];
+          return <Widget>[
+            const Divider(height: 32),
+            Text('Похожие упражнения', style: Theme.of(context).textTheme.titleMedium),
+            for (final x in similar)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(child: Icon(categoryIcons[x.category] ?? Icons.sports_soccer)),
+                title: Text(x.title),
+                subtitle: Text('${DrillCategories.all[x.category]} · ${drillMeta(x)}'),
+                onTap: () => context.pushReplacement('/library/drill/${x.id}'),
+              ),
+          ];
+        }(),
+      ]),
     );
   }
+}
+
+/// Добавить упражнение в черновик или запланированную тренировку команды, либо создать новую.
+Future<void> addDrillToPlan(BuildContext context, WidgetRef ref, Drill d) async {
+  final team = ref.read(currentTeamProvider);
+  final sessions = [
+    for (final s in ref.read(sessionsProvider).value ?? const <TrainingSession>[])
+      if ((s.status == 'draft' || s.status == 'planned') && (team == null || s.teamId == team.id)) s,
+  ]..sort((a, b) => (a.scheduledAt ?? DateTime(2100)).compareTo(b.scheduledAt ?? DateTime(2100)));
+  final target = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (c) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (c, scroll) => ListView(controller: scroll, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text('«${d.title}» — в какую тренировку?', style: Theme.of(c).textTheme.titleMedium),
+        ),
+        ListTile(
+          leading: const Icon(Icons.add_circle_outline, color: AppColors.red),
+          title: const Text('Новая тренировка с этим упражнением'),
+          onTap: () => Navigator.pop(c, ''),
+        ),
+        for (final s in sessions)
+          ListTile(
+            leading: const Icon(Icons.event_note_outlined),
+            title: Text(s.title),
+            subtitle: Text('${formatWhen(s.scheduledAt)} · ${SessionStatus.labels[s.status]} · ${s.plannedMinutes} мин'),
+            onTap: () => Navigator.pop(c, s.id),
+          ),
+      ]),
+    ),
+  );
+  if (target == null || !context.mounted) return;
+  final repo = ref.read(repoProvider);
+  if (target.isEmpty) {
+    final s = TrainingSession(
+      id: newId(),
+      teamId: team?.id,
+      title: d.title,
+      goal: d.goal.split('.').first,
+      durationMin: d.durationMin,
+      playersExpected: team?.defaultPlayers,
+      equipment: team?.equipment ?? const [],
+      blocks: [blockFromDrill(d, id: newId())],
+    );
+    await repo.put(Entities.sessions, s);
+    if (context.mounted) context.push('/sessions/${s.id}');
+    return;
+  }
+  final s = sessions.firstWhere((x) => x.id == target);
+  await repo.put(
+    Entities.sessions,
+    s.copyWith(blocks: [...s.blocks, blockFromDrill(d, id: newId(), intensity: s.params['intensity'] as String? ?? 'medium')]),
+  );
+  if (context.mounted) showInfo(context, 'Добавлено в «${s.title}»: теперь ${s.plannedMinutes + d.durationMin} мин из ${s.durationMin}');
 }
 
 // ---------------------------------------------------------------- редактор упражнения
@@ -616,3 +759,113 @@ class _DrillEditScreenState extends ConsumerState<DrillEditScreen> {
 /// Открыть выбор упражнения из библиотеки (для редактора плана).
 Future<Drill?> pickDrill(BuildContext context) =>
     Navigator.of(context).push<Drill>(MaterialPageRoute(builder: (_) => const LibraryScreen(pickMode: true)));
+
+
+const intensityNames = {'low': 'Низкая', 'medium': 'Средняя', 'high': 'Высокая'};
+
+/// Подробные фильтры каталога: интенсивность, длительность, игроки, возраст, инвентарь.
+Future<void> showDrillFiltersSheet(BuildContext context, WidgetRef ref) {
+  var f = ref.read(drillFilterProvider);
+  var ints = {...f.intensities};
+  var maxDur = f.maxDuration;
+  var players = f.players;
+  var age = f.age;
+  Set<String>? eq = f.equipment == null ? null : {...f.equipment!};
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.8,
+        builder: (c, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+          Text('Фильтры упражнений', style: Theme.of(c).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          const Text('Интенсивность', style: TextStyle(fontWeight: FontWeight.w700)),
+          Wrap(spacing: 8, children: [
+            for (final e in intensityNames.entries)
+              FilterChip(
+                label: Text(e.value),
+                selected: ints.contains(e.key),
+                onSelected: (v) => set(() => v ? ints.add(e.key) : ints.remove(e.key)),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          const Text('Длительность', style: TextStyle(fontWeight: FontWeight.w700)),
+          Wrap(spacing: 8, children: [
+            for (final m in [null, 10, 15, 20, 30])
+              ChoiceChip(label: Text(m == null ? 'Любая' : 'до $m мин'), selected: maxDur == m, onSelected: (_) => set(() => maxDur = m)),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            const Expanded(child: Text('Число игроков', style: TextStyle(fontWeight: FontWeight.w700))),
+            Switch(value: players != null, onChanged: (v) => set(() => players = v ? 12 : null)),
+          ]),
+          if (players != null) ...[
+            Text('Подходит для $players игроков'),
+            Slider(value: players!.toDouble(), min: 1, max: 30, divisions: 29, label: '$players', onChanged: (v) => set(() => players = v.round())),
+          ],
+          Row(children: [
+            const Expanded(child: Text('Возраст игроков', style: TextStyle(fontWeight: FontWeight.w700))),
+            Switch(value: age != null, onChanged: (v) => set(() => age = v ? 12 : null)),
+          ]),
+          if (age != null) ...[
+            Text(age! >= 18 ? 'Взрослые (18+)' : '$age лет'),
+            Slider(value: age!.toDouble(), min: 6, max: 18, divisions: 12, label: '$age', onChanged: (v) => set(() => age = v.round())),
+          ],
+          Row(children: [
+            const Expanded(child: Text('Только с моим инвентарём', style: TextStyle(fontWeight: FontWeight.w700))),
+            Switch(value: eq != null, onChanged: (v) => set(() => eq = v ? {'balls', 'cones'} : null)),
+          ]),
+          if (eq != null)
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final e in Equipment.all.entries)
+                FilterChip(
+                  label: Text(e.value),
+                  selected: eq!.contains(e.key),
+                  onSelected: (v) => set(() => v ? eq!.add(e.key) : eq!.remove(e.key)),
+                ),
+            ]),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  ref.read(drillFilterProvider.notifier).update((s) => s.withExtra());
+                  Navigator.pop(c);
+                },
+                child: const Text('Сбросить'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                onPressed: () {
+                  ref.read(drillFilterProvider.notifier).update(
+                        (s) => s.withExtra(intensities: ints, maxDuration: maxDur, players: players, age: age, equipment: eq),
+                      );
+                  Navigator.pop(c);
+                },
+                child: const Text('Показать'),
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    ),
+  );
+}
+
+/// Похожие упражнения: та же категория, близкий возраст и состав.
+List<Drill> similarDrills(Drill d, List<Drill> all, {int limit = 4}) {
+  int score(Drill x) =>
+      (x.category == d.category ? 0 : 100) +
+      (x.ageMin - d.ageMin).abs() +
+      (x.playersMin - d.playersMin).abs() +
+      (x.intensity == d.intensity ? 0 : 3);
+  return ([for (final x in all) if (x.id != d.id && (x.category == d.category || x.tags.any(d.tags.contains))) x]
+        ..sort((a, b) => score(a).compareTo(score(b))))
+      .take(limit)
+      .toList();
+}

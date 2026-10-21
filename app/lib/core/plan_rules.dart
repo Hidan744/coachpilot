@@ -234,3 +234,26 @@ Drill? similarDrill({
   if (pool.isEmpty) return null;
   return pool[skip % pool.length];
 }
+
+/// Фаза плана по категории упражнения.
+String phaseForCategory(String category) => switch (category) {
+      'warmup' => 'warmup',
+      'cooldown' => 'cooldown',
+      'game' => 'game',
+      _ => 'main',
+    };
+
+/// Блок плана из упражнения каталога, добавленного тренером вручную.
+TrainingBlock blockFromDrill(Drill d, {required String id, String intensity = 'medium', String why = 'Добавлено тренером из каталога.'}) {
+  final phase = phaseForCategory(d.category);
+  return TrainingBlock(
+    id: id,
+    phase: phase,
+    title: d.title,
+    durationMin: d.durationMin,
+    drillId: d.id,
+    drill: drillSnapshot(d),
+    why: why,
+    dosage: dosageFor(d.durationMin, phase, phase == 'main' || phase == 'game' ? intensity : 'low'),
+  );
+}

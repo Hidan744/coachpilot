@@ -745,16 +745,9 @@ class _PlanEditor extends ConsumerWidget {
                 onPressed: () async {
                   final d = await pickDrill(context);
                   if (d == null) return;
-                  final phase = d.category == 'warmup'
-                      ? 'warmup'
-                      : d.category == 'cooldown'
-                          ? 'cooldown'
-                          : d.category == 'game'
-                              ? 'game'
-                              : 'main';
                   await _save(ref, s.copyWith(blocks: [
                     ...s.blocks,
-                    TrainingBlock(id: newId(), phase: phase, title: d.title, durationMin: d.durationMin, drillId: d.id, drill: d.toJson()),
+                    blockFromDrill(d, id: newId(), intensity: s.params['intensity'] as String? ?? 'medium'),
                   ]));
                 },
               ),

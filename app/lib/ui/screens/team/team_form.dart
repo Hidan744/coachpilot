@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/lineup.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
@@ -24,6 +25,18 @@ class _TeamFormState extends ConsumerState<TeamForm> {
   late String _age = widget.team?.ageGroup ?? 'U12';
   late String _level = widget.team?.level ?? 'amateur';
   late final Set<String> _equipment = {...widget.team?.equipment ?? ['balls', 'cones', 'bibs', 'goals']};
+  late String _formation = widget.team?.formation ?? '';
+  late final List<TeamGoal> _goals = [...widget.team?.seasonGoals ?? const <TeamGoal>[]];
+  final _goal = TextEditingController();
+
+  void _addGoal() {
+    final t = _goal.text.trim();
+    if (t.isEmpty) return;
+    setState(() {
+      _goals.add(TeamGoal(t));
+      _goal.clear();
+    });
+  }
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
@@ -35,6 +48,8 @@ class _TeamFormState extends ConsumerState<TeamForm> {
       defaultPlayers: int.parse(_players.text),
       equipment: _equipment.toList(),
       notes: widget.team?.notes ?? '',
+      formation: _formation,
+      seasonGoals: [..._goals, if (_goal.text.trim().isNotEmpty) TeamGoal(_goal.text.trim())],
     );
     await ref.read(repoProvider).put(Entities.teams, team);
     if (widget.team == null) ref.read(analyticsProvider).track('team_created', {'age_group': team.ageGroup});
@@ -87,6 +102,39 @@ class _TeamFormState extends ConsumerState<TeamForm> {
                 selected: _equipment.contains(e.key),
                 onSelected: (v) => setState(() => v ? _equipment.add(e.key) : _equipment.remove(e.key)),
               ),
+          ]),
+          const SizedBox(height: 16),
+          Text('Основная игровая схема', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ChoiceChip(label: const Text('Не задана'), selected: _formation.isEmpty, onSelected: (_) => setState(() => _formation = '')),
+            for (final f in formationsFor(int.tryParse(_players.text) ?? 11))
+              ChoiceChip(label: Text(f), selected: _formation == f, onSelected: (_) => setState(() => _formation = f)),
+          ]),
+          const SizedBox(height: 16),
+          Text('Цели на сезон', style: Theme.of(context).textTheme.labelLarge),
+          for (var i = 0; i < _goals.length; i++)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: Icon(_goals[i].done ? Icons.check_circle : Icons.flag_outlined),
+              title: Text(_goals[i].text),
+              trailing: IconButton(
+                tooltip: 'Удалить цель',
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() => _goals.removeAt(i)),
+              ),
+            ),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _goal,
+                maxLength: 300,
+                decoration: const InputDecoration(hintText: 'Например: войти в тройку лиги', counterText: ''),
+                onSubmitted: (_) => _addGoal(),
+              ),
+            ),
+            IconButton(tooltip: 'Добавить цель', onPressed: _addGoal, icon: const Icon(Icons.add_circle_outline)),
           ]),
           const SizedBox(height: 24),
           FilledButton(key: const Key('team_save'), onPressed: _save, child: Text(widget.submitLabel)),

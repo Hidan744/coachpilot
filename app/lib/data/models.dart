@@ -77,6 +77,12 @@ class Team implements Entity {
   final List<String> equipment;
   final String notes;
 
+  /// Основная игровая схема (4-3-3, 2-3-1…), пусто — не задана.
+  final String formation;
+
+  /// Цели на сезон: текст и отметка «выполнено».
+  final List<TeamGoal> seasonGoals;
+
   Team({
     required this.id,
     required this.name,
@@ -86,6 +92,8 @@ class Team implements Entity {
     this.fieldType,
     this.equipment = const [],
     this.notes = '',
+    this.formation = '',
+    this.seasonGoals = const [],
   });
 
   factory Team.fromJson(String id, Json j) => Team(
@@ -97,6 +105,8 @@ class Team implements Entity {
         fieldType: j['field_type'],
         equipment: _strList(j['equipment']),
         notes: j['notes'] ?? '',
+        formation: j['formation'] ?? '',
+        seasonGoals: [for (final g in (j['season_goals'] as List?) ?? const []) TeamGoal.fromJson(g as Json)],
       );
 
   @override
@@ -108,7 +118,30 @@ class Team implements Entity {
         'field_type': fieldType,
         'equipment': equipment,
         'notes': notes,
+        'formation': formation,
+        'season_goals': [for (final g in seasonGoals) g.toJson()],
       };
+
+  Team copyWith({List<TeamGoal>? seasonGoals}) => Team.fromJson(id, {
+        ...toJson(),
+        if (seasonGoals != null) 'season_goals': [for (final g in seasonGoals) g.toJson()],
+      });
+}
+
+/// Цель команды на сезон.
+class TeamGoal {
+  const TeamGoal(this.text, {this.done = false});
+
+  final String text;
+  final bool done;
+
+  factory TeamGoal.fromJson(Json j) => TeamGoal(j['text'] ?? '', done: j['done'] ?? false);
+
+  Json toJson() => {'text': text, 'done': done};
+}
+
+class Feet {
+  static const all = {'right': 'Правая', 'left': 'Левая', 'both': 'Обе'};
 }
 
 class Positions {
@@ -127,6 +160,15 @@ class Player implements Entity {
   final String notes;
   final bool active;
 
+  /// Ведущая нога: right, left, both.
+  final String? dominantFoot;
+
+  /// Уровень подготовки (как у команды: beginner … pro).
+  final String? level;
+
+  /// Сильные стороны, зоны развития и индивидуальные цели — словами тренера.
+  final String strengths, weaknesses, goals;
+
   Player({
     required this.id,
     required this.teamId,
@@ -137,6 +179,11 @@ class Player implements Entity {
     this.number,
     this.notes = '',
     this.active = true,
+    this.dominantFoot,
+    this.level,
+    this.strengths = '',
+    this.weaknesses = '',
+    this.goals = '',
   });
 
   String get fullName => lastName.isEmpty ? firstName : '$firstName $lastName';
@@ -151,6 +198,11 @@ class Player implements Entity {
         number: j['number'],
         notes: j['notes'] ?? '',
         active: j['active'] ?? true,
+        dominantFoot: j['dominant_foot'],
+        level: j['level'],
+        strengths: j['strengths'] ?? '',
+        weaknesses: j['weaknesses'] ?? '',
+        goals: j['goals'] ?? '',
       );
 
   @override
@@ -163,6 +215,11 @@ class Player implements Entity {
         'number': number,
         'notes': notes,
         'active': active,
+        'dominant_foot': dominantFoot,
+        'level': level,
+        'strengths': strengths,
+        'weaknesses': weaknesses,
+        'goals': goals,
       };
 }
 
