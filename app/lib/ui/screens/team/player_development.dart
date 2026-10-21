@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/parent_report.dart';
 import '../../../core/performance.dart';
+import '../../../core/dev_weeks.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
@@ -128,6 +129,75 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
   bool _shared = true;
   bool _loaded = false;
   String _newKind = 'task';
+  List<PlanWeek> _weeks = [];
+  int _perWeek = 2;
+  int _minutes = 20;
+
+  /// Составить понедельный план по выбранным навыкам, возрасту игрока и доступному времени.
+  Future<void> _buildWeeks() async {
+    final n = PlanPeriods.weeks(_period);
+    if (n == null) return;
+    if (_focus.isEmpty) return showInfo(context, 'Отметьте, над чем работаем — от этого зависят упражнения');
+    if (_weeks.any((w) => w.done || w.comment.isNotEmpty) &&
+        !await confirm(context, 'Пересоставить недели?', text: 'Отметки и комментарии по неделям будут заменены.', ok: 'Пересоставить')) {
+      return;
+    }
+    final repo = ref.read(repoProvider);
+    final player = await repo.get(Entities.players, widget.playerId, Player.fromJson);
+    final library = await repo.list(Entities.drills, Drill.fromJson);
+    if (!mounted) return;
+    setState(() => _weeks = buildPlanWeeks(
+          weeks: n,
+          focus: _focus.toList(),
+          library: library,
+          age: player == null ? 12 : playerAge(player),
+          sessionsPerWeek: _perWeek,
+          minutes: _minutes,
+        ));
+  }
+
+  Future<void> _editWeek(int i) async {
+    final w = _weeks[i];
+    final priority = TextEditingController(text: w.priority);
+    final comment = TextEditingController(text: w.comment);
+    var sessions = w.sessions;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, set) => AlertDialog(
+          title: Text('Неделя ${w.n}'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: priority, decoration: const InputDecoration(labelText: 'Приоритет недели'), maxLength: 200),
+              Row(children: [
+                const Expanded(child: Text('Занятий в неделю')),
+                IconButton(onPressed: sessions > 0 ? () => set(() => sessions--) : null, icon: const Icon(Icons.remove_circle_outline)),
+                Text('$sessions'),
+                IconButton(onPressed: sessions < 7 ? () => set(() => sessions++) : null, icon: const Icon(Icons.add_circle_outline)),
+              ]),
+              TextField(
+                controller: comment,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(labelText: 'Комментарий: как прошла неделя, результат замера'),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Готово')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _weeks[i] = w.copyWith(
+          priority: priority.text.trim().isEmpty ? w.priority : priority.text.trim(),
+          comment: comment.text.trim(),
+          sessions: sessions,
+        ));
+  }
 
   @override
   void initState() {
@@ -149,6 +219,7 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
           _focus.addAll(p.focus);
           _items = [...p.items];
           _shared = p.shared;
+          _weeks = [...p.weeks];
           _loaded = true;
         });
       });
@@ -202,6 +273,7 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
             shared: _shared,
             keyGoal: _keyGoal.text.trim(),
             targets: _targets,
+            weeks: PlanPeriods.weeks(_period) == null ? const [] : _weeks.take(PlanPeriods.weeks(_period)!).toList(),
           ),
         );
     if (mounted) popOr(context, '/team/player/${widget.playerId}');
@@ -300,6 +372,71 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
               onSelected: (v) => setState(() => v ? _focus.add(e.key) : _focus.remove(e.key)),
             ),
         ]),
+        if (PlanPeriods.weeks(_period) != null) ...[
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(
+              child: Text(
+                _weeks.isEmpty ? 'План по неделям' : 'По неделям: выполнено ${_weeks.where((w) => w.done).length} из ${_weeks.length}',
+                style: t.textTheme.titleMedium,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            DropdownButton<int>(
+              value: _perWeek,
+              items: [for (final n in [1, 2, 3, 4]) DropdownMenuItem(value: n, child: Text('$n доп. занятия в неделю'))],
+              onChanged: (v) => setState(() => _perWeek = v!),
+            ),
+            DropdownButton<int>(
+              value: _minutes,
+              items: [for (final m in [15, 20, 30, 45]) DropdownMenuItem(value: m, child: Text('по $m мин'))],
+              onChanged: (v) => setState(() => _minutes = v!),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: _buildWeeks,
+              icon: const Icon(Icons.view_week_outlined),
+              label: Text(_weeks.isEmpty ? 'Составить по неделям' : 'Пересоставить'),
+            ),
+          ]),
+          if (_weeks.isEmpty)
+            Text('Неделя за неделей: приоритет, упражнения из каталога, нагрузка, ориентир и как проверить прогресс. '
+                'Сначала отметьте, над чем работаем.', style: t.textTheme.bodySmall),
+          for (var i = 0; i < _weeks.length; i++)
+            Card(
+              margin: const EdgeInsets.only(top: 8),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 8, 10),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Checkbox(value: _weeks[i].done, onChanged: (v) => setState(() => _weeks[i] = _weeks[i].copyWith(done: v ?? false))),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const SizedBox(height: 10),
+                      Text('Неделя ${_weeks[i].n} · ${_weeks[i].priority}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      if (_weeks[i].drills.isNotEmpty) Text('Упражнения: ${_weeks[i].drills.join(', ')}'),
+                      Text('${_weeks[i].sessions} занятия · ${_weeks[i].load}', style: t.textTheme.bodySmall),
+                      if (_weeks[i].expected.isNotEmpty)
+                        Text(_weeks[i].expected, style: t.textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic)),
+                      if (_weeks[i].criteria.isNotEmpty) Text('Как проверить: ${_weeks[i].criteria}', style: t.textTheme.bodySmall),
+                      if (_weeks[i].comment.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('Комментарий: ${_weeks[i].comment}', style: const TextStyle(color: AppColors.good)),
+                        ),
+                    ]),
+                  ),
+                  IconButton(tooltip: 'Изменить неделю', icon: const Icon(Icons.edit_note), onPressed: () => _editWeek(i)),
+                ]),
+              ),
+            ),
+          if (_weeks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Ориентиры — рекомендации, а не гарантированный результат: темп у каждого игрока свой.',
+                  style: t.textTheme.bodySmall),
+            ),
+        ],
         const SizedBox(height: 16),
         if (goals.isNotEmpty) ...[
           Text('Цели', style: t.textTheme.titleMedium),

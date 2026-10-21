@@ -57,6 +57,35 @@ class Repo {
     onLocalChange?.call();
   }
 
+  /// Резервная копия: все записи пользователя (без системного каталога) по сущностям.
+  Future<Json> backup() async {
+    final rows = await (db.select(db.records)..where((t) => t.deleted.equals(false) & t.system.equals(false))).get();
+    final data = <String, List<Json>>{};
+    for (final r in rows) {
+      (data[r.entity] ??= []).add({'id': r.id, ...(jsonDecode(r.data) as Json)});
+    }
+    return {'app': 'CoachPilot', 'version': 1, 'created_at': DateTime.now().toIso8601String(), 'data': data};
+  }
+
+  /// Восстановление из резервной копии: записи добавляются или обновляются, ничего не удаляется.
+  /// Возвращает число восстановленных записей.
+  Future<int> restore(Json backup) async {
+    if (backup['app'] != 'CoachPilot' || backup['data'] is! Map) {
+      throw const FormatException('Это не резервная копия CoachPilot');
+    }
+    var n = 0;
+    for (final e in (backup['data'] as Map).entries) {
+      if (!Entities.all.contains(e.key) || e.value is! List) continue;
+      for (final item in e.value as List) {
+        if (item is! Map || item['id'] is! String) continue;
+        final j = Map<String, dynamic>.from(item)..remove('id');
+        await putJson(e.key as String, item['id'] as String, j);
+        n++;
+      }
+    }
+    return n;
+  }
+
   Future<void> _enqueue(String entity, String id, String op) async {
     await (db.delete(db.outbox)..where((t) => t.entity.equals(entity) & t.recordId.equals(id))).go();
     await db.into(db.outbox).insert(

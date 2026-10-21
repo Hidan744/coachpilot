@@ -180,7 +180,10 @@ const goalSuggestions = [
 const focusLabels = {'technique': 'Техника', 'tactics': 'Тактика', 'physical': 'Физика', 'game': 'Игра'};
 
 class AiWizardScreen extends ConsumerStatefulWidget {
-  const AiWizardScreen({super.key});
+  const AiWizardScreen({super.key, this.goal, this.intensity});
+
+  /// Подставить цель и интенсивность (например, из рекомендации).
+  final String? goal, intensity;
 
   @override
   ConsumerState<AiWizardScreen> createState() => _AiWizardScreenState();
@@ -207,6 +210,8 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
     super.initState();
     final t = ref.read(currentTeamProvider);
     if (t != null) _applyTeam(t);
+    if (widget.goal != null) _goal.text = widget.goal!;
+    if (intensityLabels.containsKey(widget.intensity)) _intensity = widget.intensity!;
   }
 
   void _applyTeam(Team t) {

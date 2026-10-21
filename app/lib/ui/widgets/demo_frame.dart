@@ -17,6 +17,7 @@ class DemoFrame extends StatelessWidget {
   static const _features = [
     (Icons.space_dashboard_outlined, 'Дашборд тренера', 'Посещаемость, нагрузка, ОФП, результаты — на главной', '/'),
     (Icons.insights_outlined, 'Дашборд команды', 'Графики по неделям, структура нагрузки, лидеры', '/team?tab=1'),
+    (Icons.tips_and_updates_outlined, 'Рекомендации тренеру', 'Что сделать, почему, на каких данных и следующий шаг', '/team/advice'),
     (Icons.query_stats, 'Статистика игроков', 'Голы, передачи, удары, рейтинг — как в профи', '/team?tab=2'),
     (Icons.person_search_outlined, 'Профиль игрока', 'ОФП-радар, программа развития, отчёт для родителей', '/team'),
     (Icons.calendar_month_outlined, 'Календарь сезона', 'Матчи, расписание команд, тренировки', '/calendar'),

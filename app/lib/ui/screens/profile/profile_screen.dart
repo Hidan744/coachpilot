@@ -1,11 +1,13 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/export/save_file.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../sync/api_client.dart';
@@ -37,6 +39,24 @@ class ProfileScreen extends ConsumerWidget {
           onTap: auth.demo ? null : () => _editProfile(context, ref, p),
         ),
         const StaffAndReportsSection(),
+        const SectionTitle('Резервная копия'),
+        ListTile(
+          leading: const Icon(Icons.save_alt),
+          title: const Text('Сохранить резервную копию'),
+          subtitle: const Text('Все команды, игроки, тренировки, отчёты и планы — одним файлом JSON на этом устройстве'),
+          onTap: () => _backup(context, ref),
+        ),
+        ListTile(
+          leading: const Icon(Icons.settings_backup_restore),
+          title: const Text('Восстановить из файла'),
+          subtitle: const Text('Записи из копии добавятся или обновятся, остальные данные не удаляются'),
+          onTap: () => _restore(context, ref),
+        ),
+        const ListTile(
+          leading: Icon(Icons.straighten),
+          title: Text('Единицы и формат'),
+          subtitle: Text('Время — 24 часа, даты — день.месяц.год, расстояния — метры, скорость — секунды на отрезок'),
+        ),
         if (auth.demo) ...[
           Card(
             margin: const EdgeInsets.all(16),
@@ -215,6 +235,29 @@ final _quotaProvider = FutureProvider<Json?>((ref) async {
     return null;
   }
 });
+
+Future<void> _backup(BuildContext context, WidgetRef ref) async {
+  final data = await ref.read(repoProvider).backup();
+  final bytes = Uint8List.fromList(utf8.encode(const JsonEncoder.withIndent(' ').convert(data)));
+  final count = (data['data'] as Map).values.fold<int>(0, (a, l) => a + (l as List).length);
+  await saveFile(bytes, 'CoachPilot_backup_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.json', 'application/json');
+  if (context.mounted) showInfo(context, 'Сохранено записей: $count');
+}
+
+Future<void> _restore(BuildContext context, WidgetRef ref) async {
+  final f = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: const ['json']);
+  if (f == null || !context.mounted) return;
+  if (!await confirm(context, 'Восстановить данные из «${f.name}»?',
+      text: 'Записи из файла заменят записи с теми же идентификаторами. Остальные данные останутся.', ok: 'Восстановить')) {
+    return;
+  }
+  try {
+    final n = await ref.read(repoProvider).restore(jsonDecode(utf8.decode(await f.readAsBytes())) as Json);
+    if (context.mounted) showInfo(context, 'Восстановлено записей: $n');
+  } catch (e) {
+    if (context.mounted) showInfo(context, 'Не удалось прочитать файл: это не резервная копия CoachPilot');
+  }
+}
 
 Future<void> _export(BuildContext context, WidgetRef ref) async {
   try {

@@ -77,7 +77,7 @@ try {
   await tap(page, 'Оформить с AI');
   await see(page, 'Нет связи');
   await context.unroute(`${API}/**`);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(4500); // подсказка «Нет связи» закрывается сама
   await tap(page, 'Оформить с AI');
   await see(page, 'Предложения AI на следующие занятия', 30000);
   await shot(page, 's7-01-report');
@@ -103,6 +103,11 @@ try {
   step('занятие, заметка и подтверждённый отчёт на сервере');
 
   await tap(page, 'Главная');
+  await see(page, 'Конструктор');
+  // Недавние занятия — ниже сводки недели и быстрых действий.
+  await page.mouse.move(200, 400);
+  await page.mouse.wheel(0, 1500);
+  await page.waitForTimeout(500);
   await see(page, 'Недавние занятия');
   await shot(page, 's7-03-home');
   console.log('STAGE 6-7 E2E: OK');

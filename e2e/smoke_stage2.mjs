@@ -51,6 +51,9 @@ try {
   await see(page, 'Синхронизировано');
   step('связь восстановлена → синхронизировано');
 
+  await page.mouse.move(200, 400);
+  await page.mouse.wheel(0, 3000);
+  await page.waitForTimeout(500);
   await tap(page, 'Выйти');
   await tap(page, 'Выйти', { exact: true });
   await see(page, 'Вход');

@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/export/plan_export.dart';
+import '../../../core/export/save_file.dart';
 import '../../../core/providers.dart';
 import '../../../core/run_state.dart';
+import '../../../core/session_summary.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../../sync/api_client.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../library/library_screens.dart';
+import '../team/team_screens.dart';
 import 'sessions_screens.dart';
 
 final notesProvider = StreamProvider.family<List<SessionNote>, String>(
@@ -36,10 +42,19 @@ class ReportScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportScreenState extends ConsumerState<ReportScreen> {
+  // Свой мессенджер: подсказки показываются над закреплёнными кнопками, а не поверх них.
+  final _snacks = GlobalKey<ScaffoldMessengerState>();
+
+  void _info(String msg) => _snacks.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(msg)));
+
   final _wentWell = TextEditingController();
   final _toImprove = TextEditingController();
   final _observations = TextEditingController();
   final _raw = TextEditingController();
+  final _nextTime = TextEditingController();
+  Map<String, String> _playerNotes = {};
   int? _rating;
 
   /// Нагрузка по ощущениям группы, RPE 1–10.
@@ -70,6 +85,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       _rating = r.rating;
       _rpe = r.rpe;
       _suggestions = [...r.aiSuggestions];
+      _nextTime.text = r.nextTime;
+      _playerNotes = {...r.playerNotes};
     });
   }
 
@@ -86,6 +103,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
       coachConfirmed: confirmed,
       confirmedAt: confirmed ? DateTime.now() : null,
       rpe: _rpe,
+      playerNotes: {for (final e in _playerNotes.entries) if (e.value.trim().isNotEmpty) e.key: e.value.trim()},
+      nextTime: _nextTime.text.trim(),
     );
     await ref.read(repoProvider).put(Entities.reports, report);
     if (confirmed) {
@@ -95,7 +114,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     if (confirmed) {
       context.pushReplacement('/sessions/${widget.sessionId}/summary');
     } else {
-      showInfo(context, 'Черновик отчёта сохранён');
+      _info('Черновик отчёта сохранён');
     }
   }
 
@@ -103,11 +122,11 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     final text = [_wentWell, _toImprove, _observations, _raw].map((c) => c.text.trim()).join();
     final notes = ref.read(notesProvider(widget.sessionId)).value ?? const [];
     if (text.isEmpty && notes.isEmpty) {
-      showInfo(context, 'Напишите или надиктуйте хотя бы пару фраз о занятии');
+      _info('Напишите или надиктуйте хотя бы пару фраз о занятии');
       return;
     }
     if (ref.read(authProvider).demo) {
-      showInfo(context, 'В демо-режиме AI-оформление недоступно — заполните разделы вручную.');
+      _info('В демо-режиме AI-оформление недоступно — заполните разделы вручную.');
       return;
     }
     setState(() => _busy = true);
@@ -130,10 +149,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         _suggestions = (r['suggestions'] as List).cast<String>();
       });
       final warnings = (r['warnings'] as List).cast<String>();
-      showInfo(context, warnings.isNotEmpty ? warnings.first : 'Готово. Проверьте текст и подтвердите отчёт.');
+      _info(warnings.isNotEmpty ? warnings.first : 'Готово. Проверьте текст и подтвердите отчёт.');
     } on ApiException catch (e) {
       if (mounted) {
-        showInfo(context, e.isNetwork ? 'Нет связи: AI-оформление недоступно, заполните отчёт вручную — он сохранится на телефоне.' : e.message);
+        _info(e.isNetwork ? 'Нет связи: AI-оформление недоступно, заполните отчёт вручную — он сохранится на телефоне.' : e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -155,7 +174,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           ),
         );
 
-    return Scaffold(
+    return ScaffoldMessenger(
+      key: _snacks,
+      child: Scaffold(
       appBar: AppBar(title: const Text('Отчёт о занятии')),
       body: AbsorbPointer(
         absorbing: _busy,
@@ -188,7 +209,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           field(_raw, 'Свободная заметка', hint: 'Можно надиктовать: микрофон на клавиатуре', lines: 5),
           field(_wentWell, 'Что получилось'),
           field(_toImprove, 'Что улучшить'),
-          field(_observations, 'Наблюдения по игрокам и группе'),
+          field(_observations, 'Наблюдения по группе'),
+          field(_nextTime, 'Что изменить на следующей тренировке', hint: 'Меньше зона в рондо, больше игр 4×4'),
+          const SizedBox(height: 16),
+          _PlayerNotes(
+            sessionId: widget.sessionId,
+            notes: _playerNotes,
+            onChanged: (m) => setState(() => _playerNotes = m),
+          ),
           const SizedBox(height: 16),
           FilledButton.tonalIcon(
             key: const Key('report_ai'),
@@ -224,17 +252,29 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            key: const Key('report_confirm'),
-            onPressed: _busy ? null : () => _save(confirmed: true),
-            icon: const Icon(Icons.verified_outlined),
-            label: const Text('Подтвердить отчёт'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(onPressed: _busy ? null : () => _save(confirmed: false), child: const Text('Сохранить черновик')),
         ]),
       ),
+      // Кнопки сохранения всегда видны, как бы ни был длинен отчёт.
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(children: [
+            OutlinedButton(
+              onPressed: _busy ? null : () => _save(confirmed: false),
+              child: const Text('Черновик', semanticsLabel: 'Сохранить черновик'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                key: const Key('report_confirm'),
+                onPressed: _busy ? null : () => _save(confirmed: true),
+                child: const Text('Подтвердить отчёт', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ),
     );
   }
 }
@@ -277,6 +317,22 @@ class SessionSummaryScreen extends ConsumerWidget {
           actions: [
             PopupMenuButton<String>(
               onSelected: (v) async {
+                final names = {
+                  for (final p in s.teamId == null ? const <Player>[] : ref.read(playersProvider(s.teamId!)).value ?? const <Player>[])
+                    p.id: p.fullName,
+                };
+                final summary = summarizeSession(s, report, attendance);
+                if (v == 'copy') {
+                  await Clipboard.setData(ClipboardData(text: reportAsText(s, report, summary, names)));
+                  if (context.mounted) showInfo(context, 'Отчёт скопирован');
+                  return;
+                }
+                if (v == 'pdf') {
+                  final bytes = await reportPdf(s, report, summary, names, await loadPdfFonts());
+                  await saveFile(bytes, 'Otchet_${safeFileName(s.title)}.pdf', 'application/pdf');
+                  if (context.mounted) showInfo(context, 'PDF отчёта готов: откройте, чтобы распечатать или отправить');
+                  return;
+                }
                 if (v == 'repeat') {
                   final copy = TrainingSession.fromJson(newId(), {
                     ...s.toJson(),
@@ -294,6 +350,8 @@ class SessionSummaryScreen extends ConsumerWidget {
                 }
               },
               itemBuilder: (_) => const [
+                PopupMenuItem(value: 'pdf', child: Text('Отчёт в PDF / печать')),
+                PopupMenuItem(value: 'copy', child: Text('Скопировать отчёт текстом')),
                 PopupMenuItem(value: 'repeat', child: Text('Повторить как новый план')),
                 PopupMenuItem(value: 'plan', child: Text('Открыть план')),
               ],
@@ -365,9 +423,19 @@ class SessionSummaryScreen extends ConsumerWidget {
             section('Что получилось', report.wentWell),
             section('Что улучшить', report.toImprove),
             section('Наблюдения', report.observations),
+            section('Что изменить в следующий раз', report.nextTime),
+            if (report.playerNotes.isNotEmpty)
+              section(
+                'По игрокам',
+                [
+                  for (final e in report.playerNotes.entries)
+                    '• ${(s.teamId == null ? null : (ref.watch(playersProvider(s.teamId!)).value ?? const <Player>[]).where((p) => p.id == e.key).firstOrNull)?.fullName ?? 'Игрок'}: ${e.value}',
+                ].join('\n'),
+              ),
             if (report.aiSuggestions.isNotEmpty)
               section('Предложения AI (не наблюдения тренера)', report.aiSuggestions.map((e) => '• $e').join('\n')),
           ],
+          _SummaryCard(summary: summarizeSession(s, report, attendance)),
           if (s.teamId != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -380,5 +448,116 @@ class SessionSummaryScreen extends ConsumerWidget {
         ]),
       );
     });
+  }
+}
+
+
+/// Комментарии по игрокам: кто был на занятии (или вся команда) — короткая заметка каждому, кому нужно.
+class _PlayerNotes extends ConsumerWidget {
+  const _PlayerNotes({required this.sessionId, required this.notes, required this.onChanged});
+
+  final String sessionId;
+  final Map<String, String> notes;
+  final ValueChanged<Map<String, String>> onChanged;
+
+  Future<void> _edit(BuildContext context, Player p) async {
+    final c = TextEditingController(text: notes[p.id]);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(p.fullName),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          maxLength: 2000,
+          decoration: const InputDecoration(hintText: 'Например: активен в отборе, но поздно открывается под передачу'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    if (ok == true) onChanged({...notes, p.id: c.text.trim()}..removeWhere((_, v) => v.isEmpty));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(sessionProvider(sessionId)).value;
+    if (s?.teamId == null) return const SizedBox.shrink();
+    final all = ref.watch(playersProvider(s!.teamId!)).value ?? const <Player>[];
+    final att = ref.watch(sessionAttendanceProvider(sessionId)).value ?? const <Attendance>[];
+    final was = {for (final a in att) if (a.status == 'present' || a.status == 'late') a.playerId};
+    final players = [for (final p in all) if (p.active && (was.isEmpty || was.contains(p.id) || notes.containsKey(p.id))) p];
+    final t = Theme.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('Комментарии по игрокам', style: t.textTheme.titleSmall),
+      Text(was.isEmpty ? 'Нажмите на игрока, чтобы оставить заметку.' : 'Игроки, отмеченные на занятии. Нажмите, чтобы оставить заметку.',
+          style: t.textTheme.bodySmall),
+      const SizedBox(height: 6),
+      for (final p in players.where((p) => notes.containsKey(p.id)))
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          leading: const Icon(Icons.comment_outlined, color: AppColors.good),
+          title: Text(p.fullName),
+          subtitle: Text(notes[p.id]!),
+          onTap: () => _edit(context, p),
+          trailing: IconButton(
+            tooltip: 'Удалить заметку',
+            icon: const Icon(Icons.close),
+            onPressed: () => onChanged({...notes}..remove(p.id)),
+          ),
+        ),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final p in players.where((p) => !notes.containsKey(p.id)))
+          ActionChip(avatar: const Icon(Icons.add, size: 16), label: Text(p.lastName.isEmpty ? p.firstName : p.lastName), onPressed: () => _edit(context, p)),
+      ]),
+    ]);
+  }
+}
+
+
+/// Сводка: выполнено, не выполнено, проблемы, что сделать дальше — с основанием каждого пункта.
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({required this.summary});
+
+  final SessionSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    Widget group(String title, IconData icon, Color color, List<SummaryItem> items) => items.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [Icon(icon, size: 18, color: color), const SizedBox(width: 6), Text(title, style: const TextStyle(fontWeight: FontWeight.w700))]),
+              for (final i in items)
+                Padding(
+                  padding: const EdgeInsets.only(left: 24, top: 2),
+                  child: Text.rich(TextSpan(children: [
+                    TextSpan(text: i.text),
+                    if (i.basis.isNotEmpty) TextSpan(text: '  · ${i.basis}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ])),
+                ),
+            ]),
+          );
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Сводка по занятию', style: t.textTheme.titleMedium),
+          group('Выполнено', Icons.check_circle_outline, AppColors.good, summary.achieved),
+          group('Не выполнено', Icons.remove_circle_outline, AppColors.warn, summary.notDone),
+          group('Проблемы', Icons.report_problem_outlined, AppColors.warn, summary.problems),
+          group('На следующее занятие', Icons.arrow_forward, AppColors.red, summary.next),
+          group('Не хватает данных', Icons.info_outline, AppColors.textMuted, [for (final m in summary.missingData) SummaryItem(m)]),
+        ]),
+      ),
+    );
   }
 }

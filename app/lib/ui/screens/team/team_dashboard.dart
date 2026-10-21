@@ -250,6 +250,14 @@ class TeamDashboard extends ConsumerWidget {
         title: 'Рекомендации тренеру',
         items: advice,
         onTap: (a) => context.push('/team/player/${a.playerId}'),
+        footer: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => context.push('/team/advice'),
+            icon: const Icon(Icons.arrow_forward, size: 18),
+            label: const Text('Все рекомендации: основания и следующие шаги'),
+          ),
+        ),
       ),
       _AttendanceCard(attendance: attendance, sessions: byId, now: now),
       if (physTrend.any((v) => v != null))

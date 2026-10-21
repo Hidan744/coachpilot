@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../data/models.dart';
 import '../plan_rules.dart';
+import '../session_summary.dart';
 
 String _clock(int minutes) => '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';
 
@@ -183,3 +184,54 @@ Future<PdfFonts> loadPdfFonts() async => PdfFonts(
       pw.Font.ttf(await rootBundle.load('assets/fonts/Roboto_700.ttf')),
       pw.Font.ttf(await rootBundle.load('assets/fonts/Oswald_700Bold.ttf')),
     );
+
+
+/// Отчёт о занятии в PDF: сводка с основаниями, комментарии по игрокам, предложения AI отдельно.
+Future<Uint8List> reportPdf(TrainingSession s, SessionReport? r, SessionSummary sum, Map<String, String> names, PdfFonts f) async {
+  final red = PdfColor.fromInt(0xFFE30613), muted = PdfColor.fromInt(0xFF5A5A63);
+  pw.TextStyle st({double size = 10, bool bold = false, PdfColor? color}) =>
+      pw.TextStyle(font: bold ? f.bold : f.regular, fontSize: size, color: color);
+  pw.Widget group(String title, List<SummaryItem> items) => items.isEmpty
+      ? pw.SizedBox()
+      : pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 10),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text(title.toUpperCase(), style: st(size: 9, bold: true, color: red)),
+            for (final i in items)
+              pw.Bullet(
+                text: _t(i.text) + (i.basis.isEmpty ? '' : '  [${i.basis}]'),
+                style: st(size: 10),
+                bulletSize: 3,
+              ),
+          ]),
+        );
+  final doc = pw.Document(title: 'Отчёт: ${s.title}', author: 'CoachPilot AI');
+  doc.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.fromLTRB(36, 32, 36, 32),
+    build: (c) => [
+      pw.Text('Отчёт о занятии', style: st(size: 9, bold: true, color: muted)),
+      pw.Text(_t(s.title), style: pw.TextStyle(font: f.display, fontSize: 22)),
+      pw.Text(
+        [
+          _when(s.finishedAt ?? s.scheduledAt),
+          '${s.durationMin} мин',
+          if (r?.rating != null) 'оценка ${r!.rating} из 5',
+          if (r?.rpe != null) 'нагрузка RPE ${r!.rpe}',
+        ].join(' · '),
+        style: st(color: muted),
+      ),
+      if (s.goal.isNotEmpty) pw.Padding(padding: const pw.EdgeInsets.only(top: 6), child: pw.Text('Цель: ${_t(s.goal)}', style: st(size: 11, bold: true))),
+      group('Выполнено', sum.achieved),
+      group('Не выполнено', sum.notDone),
+      group('Проблемы', sum.problems),
+      if (r != null && r.playerNotes.isNotEmpty)
+        group('По игрокам', [for (final e in r.playerNotes.entries) SummaryItem('${names[e.key] ?? 'Игрок'}: ${e.value}')]),
+      group('На следующее занятие', sum.next),
+      if (r != null && r.aiSuggestions.isNotEmpty)
+        group('Предложения AI (не наблюдения тренера)', [for (final x in r.aiSuggestions) SummaryItem(x)]),
+      group('Не хватает данных', [for (final m in sum.missingData) SummaryItem(m)]),
+    ],
+  ));
+  return doc.save();
+}

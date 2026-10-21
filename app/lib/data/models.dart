@@ -30,6 +30,12 @@ class Entities {
   static const physicalTests = 'physical_tests';
   static const staff = 'staff';
 
+  /// Все сущности — для резервной копии.
+  static const all = [
+    teams, players, drills, favorites, sessions, attendance, notes, reports, assessments,
+    matches, slots, devPlans, boards, parentNotes, matchStats, physicalTests, staff,
+  ];
+
   /// Поле-родитель для индекса parentId в локальной БД.
   static const parentField = {
     players: 'team_id',
@@ -788,6 +794,12 @@ class SessionReport implements Entity {
   /// Нагрузка занятия по ощущениям (RPE 1–10): нагрузка = RPE × минуты.
   final int? rpe;
 
+  /// Комментарии по игрокам: {player_id: текст}.
+  final Map<String, String> playerNotes;
+
+  /// Что изменить на следующей тренировке.
+  final String nextTime;
+
   SessionReport({
     required this.id,
     required this.sessionId,
@@ -800,6 +812,8 @@ class SessionReport implements Entity {
     this.coachConfirmed = false,
     this.confirmedAt,
     this.rpe,
+    this.playerNotes = const {},
+    this.nextTime = '',
   });
 
   factory SessionReport.fromJson(String id, Json j) => SessionReport(
@@ -814,6 +828,8 @@ class SessionReport implements Entity {
         coachConfirmed: j['coach_confirmed'] ?? false,
         confirmedAt: _date(j['confirmed_at']),
         rpe: j['rpe'],
+        playerNotes: {for (final e in ((j['player_notes'] as Json?) ?? const {}).entries) e.key: '${e.value}'},
+        nextTime: j['next_time'] ?? '',
       );
 
   @override
@@ -828,6 +844,8 @@ class SessionReport implements Entity {
         'coach_confirmed': coachConfirmed,
         'confirmed_at': _iso(confirmedAt),
         'rpe': rpe,
+        'player_notes': playerNotes,
+        'next_time': nextTime,
       };
 }
 
@@ -1037,7 +1055,24 @@ class ScheduleSlot implements Entity {
 // ---------------------------------------------------------------- развитие игрока
 
 class PlanPeriods {
-  static const all = {'week': 'Неделя', 'cycle4': '4 недели', 'cycle6': '6 недель', 'month': 'Месяц', 'season': 'Сезон'};
+  static const all = {
+    'week': 'Неделя',
+    'cycle4': '4 недели',
+    'cycle6': '6 недель',
+    'cycle8': '8 недель',
+    'cycle12': '12 недель',
+    'month': 'Месяц',
+    'season': 'Сезон',
+  };
+
+  /// Сколько недель в программе (для понедельного плана); null — без разбивки.
+  static int? weeks(String period) => switch (period) {
+        'cycle4' => 4,
+        'cycle6' => 6,
+        'cycle8' => 8,
+        'cycle12' => 12,
+        _ => null,
+      };
 }
 
 /// Показатель программы развития: сейчас → цель, как измеряем.
@@ -1125,6 +1160,9 @@ class DevelopmentPlan implements Entity {
   final String keyGoal;
   final List<PlanTarget> targets;
 
+  /// Понедельный план: приоритет, упражнения, нагрузка, ожидаемый результат, отметка и комментарий.
+  final List<PlanWeek> weeks;
+
   DevelopmentPlan({
     required this.id,
     required this.playerId,
@@ -1138,6 +1176,7 @@ class DevelopmentPlan implements Entity {
     this.shared = true,
     this.keyGoal = '',
     this.targets = const [],
+    this.weeks = const [],
   });
 
   int get doneCount => items.where((i) => i.done).length;
@@ -1155,6 +1194,7 @@ class DevelopmentPlan implements Entity {
         shared: j['shared'] ?? true,
         keyGoal: j['key_goal'] ?? '',
         targets: ((j['targets'] as List?) ?? []).map((e) => PlanTarget.fromJson(e as Json)).toList(),
+        weeks: ((j['weeks'] as List?) ?? []).map((e) => PlanWeek.fromJson(e as Json)).toList(),
       );
 
   @override
@@ -1170,9 +1210,10 @@ class DevelopmentPlan implements Entity {
         'shared': shared,
         'key_goal': keyGoal,
         'targets': targets.map((t) => t.toJson()).toList(),
+        'weeks': weeks.map((w) => w.toJson()).toList(),
       };
 
-  DevelopmentPlan copyWith({List<PlanItem>? items}) => DevelopmentPlan(
+  DevelopmentPlan copyWith({List<PlanItem>? items, List<PlanWeek>? weeks}) => DevelopmentPlan(
         id: id,
         playerId: playerId,
         period: period,
@@ -1185,6 +1226,68 @@ class DevelopmentPlan implements Entity {
         shared: shared,
         keyGoal: keyGoal,
         targets: targets,
+        weeks: weeks ?? this.weeks,
+      );
+}
+
+/// Неделя индивидуальной программы. Ожидаемый результат — ориентир, а не обещание.
+class PlanWeek {
+  const PlanWeek({
+    required this.n,
+    required this.priority,
+    this.drills = const [],
+    this.sessions = 2,
+    this.load = '',
+    this.expected = '',
+    this.criteria = '',
+    this.done = false,
+    this.comment = '',
+  });
+
+  final int n;
+  final String priority;
+
+  /// Названия упражнений каталога для доп. занятий этой недели.
+  final List<String> drills;
+  final int sessions;
+  final String load, expected, criteria;
+  final bool done;
+  final String comment;
+
+  factory PlanWeek.fromJson(Json j) => PlanWeek(
+        n: j['n'] ?? 1,
+        priority: j['priority'] ?? '',
+        drills: _strList(j['drills']),
+        sessions: j['sessions'] ?? 2,
+        load: j['load'] ?? '',
+        expected: j['expected'] ?? '',
+        criteria: j['criteria'] ?? '',
+        done: j['done'] ?? false,
+        comment: j['comment'] ?? '',
+      );
+
+  Json toJson() => {
+        'n': n,
+        'priority': priority,
+        'drills': drills,
+        'sessions': sessions,
+        'load': load,
+        'expected': expected,
+        'criteria': criteria,
+        'done': done,
+        'comment': comment,
+      };
+
+  PlanWeek copyWith({bool? done, String? comment, String? priority, int? sessions, String? load}) => PlanWeek(
+        n: n,
+        priority: priority ?? this.priority,
+        drills: drills,
+        sessions: sessions ?? this.sessions,
+        load: load ?? this.load,
+        expected: expected,
+        criteria: criteria,
+        done: done ?? this.done,
+        comment: comment ?? this.comment,
       );
 }
 

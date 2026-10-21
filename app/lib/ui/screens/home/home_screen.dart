@@ -62,6 +62,12 @@ class HomeScreen extends ConsumerWidget {
           a(const _NextUp()),
           const SizedBox(height: 12),
           a(const _QuickActions()),
+          if (team != null) ...[
+            const SizedBox(height: 12),
+            a(_WeekStats(team: team, players: players, sessions: sessions, pendingReports: done.where((s) => !confirmed.contains(s.id)).length)),
+            const SizedBox(height: 12),
+            a(_SeasonGoals(team: team)),
+          ],
           if (needReport.isNotEmpty) ...[
             const SizedBox(height: 16),
             a(DashCard(
@@ -359,22 +365,34 @@ class _QuickActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final team = ref.watch(currentTeamProvider);
+    final confirmed = {for (final r in ref.watch(allReportsProvider).value ?? const <SessionReport>[]) if (r.coachConfirmed) r.sessionId};
+    final pending = [
+      for (final s in ref.watch(sessionsProvider).value ?? const <TrainingSession>[])
+        if (s.status == 'done' && !confirmed.contains(s.id)) s,
+    ];
     final items = <(IconData, String, VoidCallback)>[
       (Icons.auto_awesome, 'Конструктор\nтренировки', () => context.push('/sessions/new')),
+      (Icons.person_add_alt, 'Добавить\nигрока', () => team == null ? context.push('/team/new') : showPlayerForm(context, ref, teamId: team.id)),
+      (
+        Icons.rate_review_outlined,
+        pending.isEmpty ? 'Отчёты\nзаполнены' : 'Заполнить\nотчёт (${pending.length})',
+        () => pending.isEmpty ? context.go('/calendar?tab=1') : context.push('/sessions/${pending.first.id}/report'),
+      ),
       (Icons.calendar_month_outlined, 'Календарь\nсезона', () => context.go('/calendar')),
-      (Icons.draw_outlined, 'Тактическая\nдоска', () => context.push('/tactics')),
-      (Icons.insights_outlined, 'Дашборд\nкоманды', () => context.go('/team?tab=1')),
-      (Icons.query_stats, 'Статистика\nигроков', () => context.go('/team?tab=2')),
+      (Icons.tips_and_updates_outlined, 'Советы\nтренеру', () => context.push('/team/advice')),
+      (Icons.insights_outlined, 'Прогресс\nкоманды', () => context.go('/team?tab=1')),
+      (Icons.groups_2_outlined, 'Состав и\nтактика', () => context.push('/tactics/lineup')),
       (Icons.menu_book_outlined, 'Библиотека\nупражнений', () => context.go('/library')),
     ];
-    // Плитки фиксированной высоты: 3 в ряд, на широком экране — все 6 в один ряд.
+    // Плитки фиксированной высоты: 4 в ряд — две строки на телефоне и на планшете.
     return LayoutBuilder(
       builder: (context, box) => GridView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: box.maxWidth >= 720 ? 6 : 3,
-        mainAxisExtent: 108,
+        crossAxisCount: 4,
+        mainAxisExtent: box.maxWidth >= 520 ? 108 : 100,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
       ),
@@ -392,7 +410,7 @@ class _QuickActions extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 onTap: items[k].$3,
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Container(
                       padding: const EdgeInsets.all(9),
@@ -403,11 +421,17 @@ class _QuickActions extends ConsumerWidget {
                       child: Icon(items[k].$1, color: k == 0 ? Colors.white : AppColors.red, size: 24),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      items[k].$2,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      style: const TextStyle(fontSize: 12.5, height: 1.15, fontWeight: FontWeight.w600),
+                    // Узкая плитка: подпись уменьшается целиком, а не переносится посреди слова.
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          items[k].$2,
+                          textAlign: TextAlign.center,
+                          softWrap: false,
+                          style: const TextStyle(fontSize: 12.5, height: 1.15, fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
                   ]),
                 ),
@@ -452,4 +476,99 @@ class _EmptyPulse extends ConsumerWidget {
             ),
         ]),
       );
+}
+
+
+// ---------------------------------------------------------------- неделя и цели
+
+/// Показатели недели — только из данных приложения.
+class _WeekStats extends StatelessWidget {
+  const _WeekStats({required this.team, required this.players, required this.sessions, required this.pendingReports});
+
+  final Team team;
+  final List<Player> players;
+  final List<TrainingSession> sessions;
+  final int pendingReports;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+    final week = [
+      for (final s in sessions)
+        if (s.teamId == team.id && s.scheduledAt != null && !s.scheduledAt!.isBefore(monday) && s.scheduledAt!.isBefore(monday.add(const Duration(days: 7))))
+          s,
+    ];
+    final done = week.where((s) => s.status == 'done').length;
+    Widget kpi(String value, String label, {Color? color, VoidCallback? onTap}) => Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(children: [
+                Text(value, style: TextStyle(fontFamily: AppTheme.display, fontSize: 26, fontWeight: FontWeight.w700, color: color)),
+                Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ]),
+            ),
+          ),
+        );
+    return DashCard(
+      title: 'Эта неделя',
+      child: Row(children: [
+        kpi('${players.where((p) => p.active).length}', 'игроков\nв составе', onTap: () => context.go('/team')),
+        kpi('$done / ${week.length}', 'тренировок\nпроведено', onTap: () => context.go('/calendar')),
+        kpi('$pendingReports', 'отчётов\nне заполнено', color: pendingReports > 0 ? AppColors.warn : null),
+        kpi(
+          team.seasonGoals.isEmpty ? '—' : '${team.seasonGoals.where((g) => g.done).length} / ${team.seasonGoals.length}',
+          'целей сезона\nвыполнено',
+          onTap: () => context.push('/team/edit/${team.id}'),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Цели сезона: прогресс и отметка выполнения прямо с главной.
+class _SeasonGoals extends ConsumerWidget {
+  const _SeasonGoals({required this.team});
+
+  final Team team;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final goals = team.seasonGoals;
+    final done = goals.where((g) => g.done).length;
+    return DashCard(
+      title: 'Цели сезона',
+      trailing: IconButton(
+        tooltip: 'Изменить цели',
+        icon: const Icon(Icons.edit_outlined),
+        onPressed: () => context.push('/team/edit/${team.id}'),
+      ),
+      child: goals.isEmpty
+          ? const Text('Цели не заданы. Добавьте 2–3 цели на сезон в настройках команды — они появятся здесь с прогрессом.',
+              style: TextStyle(color: AppColors.textMuted))
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(value: done / goals.length, minHeight: 8, color: AppColors.good),
+              ),
+              const SizedBox(height: 4),
+              Text('Выполнено $done из ${goals.length}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              for (var i = 0; i < goals.length; i++)
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: goals[i].done,
+                  title: Text(goals[i].text),
+                  onChanged: (v) => ref.read(repoProvider).put(
+                        Entities.teams,
+                        team.copyWith(seasonGoals: [...goals]..[i] = TeamGoal(goals[i].text, done: v ?? false)),
+                      ),
+                ),
+            ]),
+    );
+  }
 }

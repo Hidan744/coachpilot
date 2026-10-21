@@ -289,6 +289,8 @@ class SessionReport(SyncMixin, Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Субъективная нагрузка занятия (RPE 1–10): нагрузка = RPE × минуты.
     rpe: Mapped[int | None] = mapped_column(Integer)
+    player_notes: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    next_time: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 class PlayerAssessment(SyncMixin, Base):
@@ -355,6 +357,7 @@ class DevelopmentPlan(SyncMixin, Base):
     # Программа на 4–6 недель: ключевая цель и показатели «сейчас → цель».
     key_goal: Mapped[str] = mapped_column(Text, default="", server_default="")
     targets: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    weeks: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class TacticBoard(SyncMixin, Base):

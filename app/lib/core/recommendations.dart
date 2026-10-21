@@ -3,10 +3,11 @@
 
 import '../data/models.dart';
 import 'performance.dart';
+import 'session_summary.dart';
 
 /// Рекомендация: направление, заголовок, пояснение с цифрами.
 class Advice {
-  const Advice(this.kind, this.title, this.text, {this.area = '', this.playerId});
+  const Advice(this.kind, this.title, this.text, {this.area = '', this.playerId, this.basis = '', this.next = '', this.route});
 
   /// up — повысить, down — снизить, keep — держать, info — к сведению, work — над чем работать.
   final String kind;
@@ -15,6 +16,13 @@ class Advice {
   /// Направление развития игрока: ОФП, Техника, Тактика, Посещаемость.
   final String area;
   final String? playerId;
+
+  /// На каких данных основан вывод (факты, а не предположения).
+  final String basis;
+
+  /// Следующий шаг тренера и куда для него перейти в приложении.
+  final String next;
+  final String? route;
 }
 
 /// Интенсивность команды: нагрузка последней недели против средней за 4 недели до неё (acute:chronic),
@@ -46,14 +54,22 @@ List<Advice> teamAdvice({
     if (ratio > 1.3) {
       out.add(Advice('down', 'Снизить интенсивность',
           'Нагрузка за неделю ${acute.round()} у.е. — на $pct% выше средней за месяц (${chronic.round()}). '
-          'Риск перегрузки и травм: следующую тренировку — средней интенсивности, меньше рывковых блоков.'));
+          'Риск перегрузки и травм: следующую тренировку — средней интенсивности, меньше рывковых блоков.',
+          basis: 'Нагрузка = RPE × минуты из отчётов: последние 7 дней против средней за 4 недели до них',
+          next: 'Соберите следующую тренировку со средней интенсивностью',
+          route: '/sessions/new?intensity=medium'));
     } else if (ratio < 0.8) {
       out.add(Advice('up', 'Можно повысить интенсивность',
           'Нагрузка за неделю ${acute.round()} у.е. — на ${-pct}% ниже средней за месяц (${chronic.round()}). '
-          'Добавьте блок высокой интенсивности: игры в малых составах или интервальный бег.'));
+          'Добавьте блок высокой интенсивности: игры в малых составах или интервальный бег.',
+          basis: 'Нагрузка = RPE × минуты из отчётов: последние 7 дней против средней за 4 недели до них',
+          next: 'Соберите тренировку с высокой интенсивностью основной части',
+          route: '/sessions/new?intensity=high'));
     } else {
       out.add(Advice('keep', 'Нагрузка в норме',
-          'За неделю ${acute.round()} у.е., средняя за месяц ${chronic.round()} (${signed(pct)}%). Держите текущий уровень.'));
+          'За неделю ${acute.round()} у.е., средняя за месяц ${chronic.round()} (${signed(pct)}%). Держите текущий уровень.',
+          basis: 'Нагрузка = RPE × минуты из отчётов за 5 недель',
+          next: 'Планируйте следующую неделю с тем же объёмом и после каждого занятия записывайте RPE'));
     }
   }
 
@@ -64,10 +80,16 @@ List<Advice> teamAdvice({
     if (avg >= 8) {
       out.add(Advice('down', 'Игроки устали',
           'Средняя тяжесть последних занятий — ${avg.toStringAsFixed(1)} из 10. Нужен восстановительный день: '
-          'низкая интенсивность, техника, растяжка.'));
+          'низкая интенсивность, техника, растяжка.',
+          basis: 'RPE в отчётах последних ${rpes.length} занятий',
+          next: 'Соберите восстановительную тренировку низкой интенсивности',
+          route: '/sessions/new?intensity=low'));
     } else if (avg <= 4) {
       out.add(Advice('up', 'Тренировки даются легко',
-          'Средняя тяжесть последних занятий — ${avg.toStringAsFixed(1)} из 10. Можно добавить темп и соревновательные задания.'));
+          'Средняя тяжесть последних занятий — ${avg.toStringAsFixed(1)} из 10. Можно добавить темп и соревновательные задания.',
+          basis: 'RPE в отчётах последних ${rpes.length} занятий',
+          next: 'Соберите тренировку с высокой интенсивностью',
+          route: '/sessions/new?intensity=high'));
     }
   }
 
@@ -79,14 +101,19 @@ List<Advice> teamAdvice({
     if (days <= 2) {
       out.add(Advice('down', 'Подводка к матчу',
           'Матч с ${next.first.opponent} через ${days <= 1 ? 'день' : '$days дня'}: короткая тренировка низкой интенсивности, '
-          'стандарты и тактика на соперника.'));
+          'стандарты и тактика на соперника.',
+          basis: 'Календарь матчей',
+          next: 'Соберите короткую тренировку: стандарты и тактика',
+          route: '/sessions/new?intensity=low&goal=Стандарты и тактика на соперника'));
     }
   }
 
   if (!adult) {
     out.add(Advice('info', 'Возраст ${team.ageGroup}',
         'Не больше двух высокоинтенсивных тренировок в неделю, работа с отягощениями — только с весом своего тела; '
-        'в период быстрого роста следите за коленями и спиной.'));
+        'в период быстрого роста следите за коленями и спиной.',
+        basis: 'Возрастная группа команды',
+        next: 'При сборке тренировки выбирайте высокую интенсивность не чаще двух раз в неделю'));
   }
   return out;
 }
@@ -117,7 +144,10 @@ List<Advice> playerAdvice(PlayerSnapshot s, {required bool adult, Iterable<Seaso
       final work = _physicalWork[m.key];
       out.add(Advice('work', 'ОФП: ${m.axis.toLowerCase()}',
           '${m.label} — $score из 100 по нормам возраста. ${work == null ? '' : (adult ? work.$1 : work.$2)}.',
-          area: 'ОФП', playerId: s.player.id));
+          area: 'ОФП', playerId: s.player.id,
+          basis: 'Тест ОФП «${m.label}» — измерение, сравнение с нормами возраста',
+          next: 'Откройте ОФП игрока: упражнения и повторный тест через 4–6 недель',
+          route: '/team/player/${s.player.id}?tab=1'));
     }
   }
 
@@ -132,7 +162,10 @@ List<Advice> playerAdvice(PlayerSnapshot s, {required bool adult, Iterable<Seaso
       out.add(Advice('work', '${tactical ? 'Тактика' : 'Техника'}: ${axis.label.toLowerCase()}',
           '${axis.weak}. В команде — $v из 100. '
           '${tactical ? 'Разбор эпизодов по видео и игры с ограничениями на 2–3 касания.' : 'Индивидуальные упражнения 15 мин до или после тренировки.'}',
-          area: tactical ? 'Тактика' : 'Техника', playerId: s.player.id));
+          area: tactical ? 'Тактика' : 'Техника', playerId: s.player.id,
+          basis: 'Статистика матчей за 90 минут против игроков своей команды (${s.season.minutes} мин в сезоне)',
+          next: 'Составьте программу на 4 недели по этому направлению',
+          route: '/team/player/${s.player.id}?tab=2'));
     }
   }
 
@@ -142,14 +175,125 @@ List<Advice> playerAdvice(PlayerSnapshot s, {required bool adult, Iterable<Seaso
   if (cats.isNotEmpty && !out.any((a) => a.area == cats.first.$1)) {
     out.add(Advice('work', '${cats.first.$1}: оценка ${cats.first.$2}',
         'Поставьте это направление ключевой целью программы развития на 4–6 недель.',
-        area: cats.first.$1, playerId: s.player.id));
+        area: cats.first.$1, playerId: s.player.id,
+        basis: 'Оценки тренера по навыкам (1–5), последние значения',
+        next: 'Откройте развитие игрока и создайте программу',
+        route: '/team/player/${s.player.id}?tab=2'));
   }
 
   final pct = s.attendancePct;
   if (pct != null && pct < 75) {
     out.add(Advice('info', 'Посещаемость $pct%',
         adult ? 'Поговорите с игроком: пропуски тормозят прогресс.' : 'Свяжитесь с родителями: пропуски тормозят прогресс.',
-        area: 'Посещаемость', playerId: s.player.id));
+        area: 'Посещаемость', playerId: s.player.id,
+        basis: 'Отметки посещаемости за 90 дней (уважительные пропуски не считаются)',
+        next: adult ? 'Обсудите с игроком график' : 'Напишите родителям',
+        route: '/team/player/${s.player.id}'));
   }
   return out;
+}
+
+/// Все рекомендации тренеру по группам — для отдельного раздела.
+class CoachRecommendations {
+  CoachRecommendations({required this.team, required this.nextSession, required this.players, required this.week, required this.missing});
+
+  final List<Advice> team, nextSession, players, week;
+
+  /// Каких данных не хватает, чтобы рекомендации были полнее.
+  final List<String> missing;
+
+  bool get isEmpty => team.isEmpty && nextSession.isEmpty && players.isEmpty && week.isEmpty;
+}
+
+/// Какие категории каталога помогают по направлению рекомендации.
+const _areaCategories = {
+  'Техника': ['technique', 'dribbling', 'passing'],
+  'Тактика': ['tactics', 'possession', 'defending'],
+  'ОФП': ['physical'],
+};
+
+CoachRecommendations coachRecommendations({
+  required Team team,
+  required List<PlayerSnapshot> players,
+  required List<TrainingSession> sessions,
+  required Map<String, SessionReport> reports,
+  required List<Attendance> attendance,
+  required List<Match> matches,
+  required List<DevelopmentPlan> plans,
+  required List<Drill> library,
+  required Map<String, SeasonStats> season,
+  DateTime? now,
+}) {
+  final at = now ?? DateTime.now();
+  final adult = team.ageGroup == 'adult';
+  final age = adult ? 18 : AgeGroups.age(team.ageGroup);
+  final mine = [for (final s in sessions) if (s.teamId == team.id) s];
+  final done = [for (final s in mine) if (s.status == 'done') s]
+    ..sort((a, b) => (b.finishedAt ?? b.scheduledAt ?? at).compareTo(a.finishedAt ?? a.scheduledAt ?? at));
+  final missing = <String>[];
+
+  // Следующая тренировка — по итогам последней проведённой.
+  final nextSession = <Advice>[];
+  final last = done.firstOrNull;
+  if (last != null) {
+    final att = [for (final a in attendance) if (a.sessionId == last.id) a];
+    for (final i in summarizeSession(last, reports[last.id], att).next) {
+      nextSession.add(Advice('info', 'По итогам «${last.title}»', i.text,
+          basis: i.basis, next: 'Соберите следующую тренировку с учётом этого', route: '/sessions/new?goal=${Uri.encodeComponent(last.goal)}'));
+    }
+    if (reports[last.id] == null) missing.add('Отчёт по последнему занятию «${last.title}» не заполнен');
+  }
+
+  // Игроки: кому нужна дополнительная работа и какие упражнения подойдут.
+  final playerTips = <Advice>[];
+  for (final s in players) {
+    for (final a in playerAdvice(s, adult: adult, team: season.values)) {
+      final cats = _areaCategories[a.area];
+      final drills = cats == null
+          ? const <Drill>[]
+          : [for (final d in library) if (cats.contains(d.category) && d.playersMin <= 4 && age >= d.ageMin && age <= d.ageMax) d].take(2).toList();
+      playerTips.add(Advice(a.kind, '${s.player.fullName}: ${a.title}', a.text,
+          area: a.area,
+          playerId: a.playerId,
+          basis: a.basis,
+          next: drills.isEmpty ? a.next : '${a.next}. Упражнения из каталога: ${drills.map((d) => '«${d.title}»').join(', ')}',
+          route: a.route));
+    }
+  }
+
+  // Цели недели: невыполненные цели сезона и текущая неделя индивидуальных программ.
+  final week = <Advice>[
+    for (final g in team.seasonGoals)
+      if (!g.done)
+        Advice('info', 'Цель сезона: ${g.text}', 'Разбейте цель на задачу на эту неделю и проверьте её в конце недели.',
+            basis: 'Цели команды на сезон', next: 'Отметьте выполнение в настройках команды', route: '/team/edit/${team.id}'),
+  ];
+  for (final p in plans) {
+    if (p.weeks.isEmpty || p.startsOn == null) continue;
+    final n = at.difference(p.startsOn!).inDays ~/ 7 + 1;
+    final w = p.weeks.where((x) => x.n == n).firstOrNull;
+    final player = players.where((s) => s.player.id == p.playerId).firstOrNull?.player;
+    if (w == null || player == null || w.done) continue;
+    week.add(Advice('work', '${player.fullName}: неделя $n «${p.title}»', w.priority,
+        playerId: player.id,
+        basis: 'Индивидуальная программа на ${p.weeks.length} недель',
+        next: 'Как проверить: ${w.criteria}',
+        route: '/team/player/${player.id}/plan/${p.id}'));
+  }
+
+  // Каких данных не хватает.
+  final recent = done.where((s) => at.difference(s.finishedAt ?? s.scheduledAt ?? at).inDays <= 28).toList();
+  if (recent.isEmpty) missing.add('Нет проведённых занятий за 4 недели: проводите тренировки в режиме «Провести»');
+  if (!recent.any((s) => reports[s.id]?.rpe != null)) missing.add('Нет оценок нагрузки RPE в отчётах — без них нет советов по интенсивности');
+  if (!players.any((s) => s.lastTest != null)) missing.add('Нет тестов ОФП — проведите тестирование, чтобы видеть физические зоны роста');
+  if (!players.any((s) => s.skillsNow.isNotEmpty)) missing.add('Нет оценок навыков 1–5 — оцените игроков в карточках');
+  if (!attendance.any((a) => recent.any((s) => s.id == a.sessionId))) missing.add('Нет отметок посещаемости за 4 недели');
+
+  return CoachRecommendations(
+    team: teamAdvice(team: team, sessions: sessions, reports: reports, matches: matches, now: at),
+    nextSession: nextSession,
+    players: playerTips,
+    week: week,
+    missing: missing,
+  );
 }

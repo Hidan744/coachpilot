@@ -51,6 +51,8 @@ String parentMessage({
     'month' => (DateTime(d.year, d.month), DateTime(d.year, d.month + 1, 0)),
     'cycle4' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 27))),
     'cycle6' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 41))),
+    'cycle8' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 55))),
+    'cycle12' => (d.subtract(Duration(days: d.weekday - 1)), d.subtract(Duration(days: d.weekday - 1)).add(const Duration(days: 83))),
     _ => (d, DateTime(d.month > 5 ? d.year + 1 : d.year, 5, 31)),
   };
 }

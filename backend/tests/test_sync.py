@@ -218,3 +218,30 @@ async def test_team_goals_and_player_profile_roundtrip(client):
         "dominant_foot": "left", "level": "advanced", "strengths": "Скорость", "goals": "10 голов за сезон"}
     bad = p | {"dominant_foot": "hand"}
     assert (await push(client, h, up("players", uuid.uuid4(), bad)))[0]["status"] == "rejected"
+
+
+async def test_plan_weeks_and_report_notes_roundtrip(client):
+    h, _ = await make_user(client)
+    t_id, p_id, s_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    plan = {"player_id": str(p_id), "period": "cycle8", "title": "Слабая нога",
+            "weeks": [{"n": 1, "priority": "Удар слабой ногой", "drills": ["Удары после обводки"], "sessions": 2,
+                       "load": "2 × 20 мин", "expected": "Стабильнее удар", "criteria": "6 из 10 в створ",
+                       "done": True, "comment": "Хорошо"}]}
+    report = {"session_id": str(s_id), "rating": 4, "player_notes": {str(p_id): "Активен в отборе", str(t_id): " "},
+              "next_time": "Больше игр в малых составах"}
+    res = await push(
+        client, h,
+        up("teams", t_id, team()),
+        up("players", p_id, {"team_id": str(t_id), "first_name": "Саша"}),
+        up("training_sessions", s_id, session_data(str(t_id))),
+        up("development_plans", uuid.uuid4(), plan),
+        up("session_reports", uuid.uuid4(), report),
+    )
+    assert all(r["status"] == "applied" for r in res), res
+    recs = {r["entity"]: r["data"] for r in (await client.get("/sync/pull?since=0", headers=h)).json()["records"]}
+    assert recs["development_plans"]["weeks"][0]["criteria"] == "6 из 10 в створ"
+    assert recs["development_plans"]["weeks"][0]["done"] is True
+    assert recs["session_reports"]["player_notes"] == {str(p_id): "Активен в отборе"}
+    assert recs["session_reports"]["next_time"] == "Больше игр в малых составах"
+    bad = report | {"player_notes": {"not-a-uuid": "x"}}
+    assert (await push(client, h, up("session_reports", uuid.uuid4(), bad)))[0]["status"] == "rejected"

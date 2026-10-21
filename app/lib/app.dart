@@ -17,6 +17,7 @@ import 'ui/screens/sessions/report_screens.dart';
 import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
 import 'ui/screens/tactics/lineup_screen.dart';
+import 'ui/screens/team/advice_screen.dart';
 import 'ui/screens/tactics/tactics_screens.dart';
 import 'ui/screens/team/player_development.dart';
 import 'ui/screens/team/player_profile.dart';
@@ -74,7 +75,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/home', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/calendar', builder: (_, _) => const PlanningScreen(), routes: [
+            GoRoute(
+                path: '/calendar',
+                builder: (_, s) => PlanningScreen(initialTab: int.tryParse(s.uri.queryParameters['tab'] ?? '') ?? 0),
+                routes: [
               GoRoute(path: 'slots', builder: (_, _) => const SlotsScreen()),
               GoRoute(
                 path: 'slot/:id',
@@ -94,7 +98,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(path: 'import', builder: (_, _) => const ImportMatchesScreen()),
             ]),
             GoRoute(path: '/sessions', builder: (_, _) => const SessionsScreen(), routes: [
-              GoRoute(path: 'new', builder: (_, _) => const AiWizardScreen()),
+              GoRoute(
+                path: 'new',
+                builder: (_, s) => AiWizardScreen(goal: s.uri.queryParameters['goal'], intensity: s.uri.queryParameters['intensity']),
+              ),
               GoRoute(path: ':id', builder: (_, s) => PlanEditorScreen(sessionId: s.pathParameters['id']!)),
               GoRoute(path: ':id/summary', builder: (_, s) => SessionSummaryScreen(sessionId: s.pathParameters['id']!)),
               GoRoute(path: ':id/report', builder: (_, s) => ReportScreen(sessionId: s.pathParameters['id']!)),
@@ -117,6 +124,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   return TeamScreen(key: ValueKey('team_tab_$tab'), initialTab: tab);
                 },
                 routes: [
+              GoRoute(path: 'advice', builder: (_, _) => const AdviceScreen()),
               GoRoute(path: 'new', builder: (_, _) => const TeamEditScreen()),
               GoRoute(path: 'edit/:id', builder: (_, s) => TeamEditScreen(teamId: s.pathParameters['id'])),
               GoRoute(

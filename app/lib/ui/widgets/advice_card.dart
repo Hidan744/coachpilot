@@ -27,7 +27,7 @@ class AdviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DashCard(
         title: title,
-        trailing: const Icon(Icons.auto_awesome, size: 18, color: AppColors.red),
+        trailing: const Icon(Icons.rule, size: 18, color: AppColors.red),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (items.isEmpty)
             const Text('Пока мало данных: отметьте посещаемость, RPE в отчётах и тесты ОФП.', style: TextStyle(color: AppColors.textMuted)),

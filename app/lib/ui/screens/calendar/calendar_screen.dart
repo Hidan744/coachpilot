@@ -53,14 +53,17 @@ String hm(DateTime d) => DateFormat('HH:mm').format(d);
 
 /// Вкладка планирования: календарь сезона и список тренировок.
 class PlanningScreen extends ConsumerStatefulWidget {
-  const PlanningScreen({super.key});
+  const PlanningScreen({super.key, this.initialTab = 0});
+
+  /// 0 — календарь, 1 — список тренировок.
+  final int initialTab;
 
   @override
   ConsumerState<PlanningScreen> createState() => _PlanningScreenState();
 }
 
 class _PlanningScreenState extends ConsumerState<PlanningScreen> with SingleTickerProviderStateMixin {
-  late final _tabs = TabController(length: 2, vsync: this)..addListener(() => setState(() {}));
+  late final _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab.clamp(0, 1))..addListener(() => setState(() {}));
   DateTime _day = dayOf(DateTime.now());
 
   @override
@@ -206,6 +209,17 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
   late DateTime _month = DateTime(widget.day.year, widget.day.month);
   Set<String>? _teams;
 
+  /// Вид: месяц (сетка + день) или неделя (7 дней списком).
+  bool _week = false;
+
+  DateTime get _monday => widget.day.subtract(Duration(days: widget.day.weekday - 1));
+
+  void _shiftWeek(int delta) {
+    final d = widget.day.add(Duration(days: 7 * delta));
+    setState(() => _month = DateTime(d.year, d.month));
+    widget.onDay(d);
+  }
+
   void _shiftMonth(int delta) => setState(() => _month = DateTime(_month.year, _month.month + delta));
 
   @override
@@ -255,6 +269,53 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
             ],
           ),
         ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+        child: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, icon: Icon(Icons.calendar_view_month), label: Text('Месяц')),
+            ButtonSegment(value: true, icon: Icon(Icons.view_week_outlined), label: Text('Неделя')),
+          ],
+          selected: {_week},
+          onSelectionChanged: (v) => setState(() => _week = v.first),
+        ),
+      ),
+      if (_week) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+          child: Row(children: [
+            IconButton(tooltip: 'Предыдущая неделя', onPressed: () => _shiftWeek(-1), icon: const Icon(Icons.chevron_left)),
+            Expanded(
+              child: Text(
+                '${DateFormat('d MMM', 'ru').format(_monday)} — ${DateFormat('d MMM yyyy', 'ru').format(_monday.add(const Duration(days: 6)))}',
+                textAlign: TextAlign.center,
+                style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(tooltip: 'Следующая неделя', onPressed: () => _shiftWeek(1), icon: const Icon(Icons.chevron_right)),
+            TextButton(onPressed: () => widget.onDay(today), child: const Text('Сегодня')),
+          ]),
+        ),
+        for (var i = 0; i < 7; i++) ...() {
+          final d = _monday.add(Duration(days: i));
+          final evs = on(d);
+          return [
+            InkWell(
+              onTap: () => widget.onDay(d),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                child: Text(
+                  _cap(DateFormat('EEEE, d MMMM', 'ru').format(d)) + (d == today ? ' · сегодня' : ''),
+                  style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: d == today ? AppColors.red : null),
+                ),
+              ),
+            ),
+            if (evs.isEmpty)
+              const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 4), child: Text('—', style: TextStyle(color: AppColors.textMuted))),
+            for (final e in evs) EventCard(e, teams: teams),
+          ];
+        }(),
+      ] else ...[
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
         child: Row(children: [
@@ -338,6 +399,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           ),
         ),
       for (final e in events) EventCard(e, teams: teams),
+      ],
     ]);
     if (widget.onAction == null) return list;
     return Column(children: [
@@ -563,6 +625,8 @@ class EventCard extends ConsumerWidget {
                   child: Text(m.score, style: t.textTheme.headlineSmall?.copyWith(fontFamily: AppTheme.display, fontWeight: FontWeight.w700)),
                 ),
               )
+            else if (e.kind == CalendarKind.training && e.session!.status != 'done' && e.session!.status != 'cancelled')
+              Center(child: _SessionMenu(session: e.session!))
             else
               const Center(child: Padding(padding: EdgeInsets.only(right: 8), child: Icon(Icons.chevron_right))),
           ]),
@@ -570,6 +634,45 @@ class EventCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Перенос, отметка о проведении и отмена тренировки прямо из календаря.
+class _SessionMenu extends ConsumerWidget {
+  const _SessionMenu({required this.session});
+
+  final TrainingSession session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => PopupMenuButton<String>(
+        tooltip: 'Действия с тренировкой',
+        onSelected: (v) async {
+          final repo = ref.read(repoProvider);
+          final s = session;
+          switch (v) {
+            case 'move':
+              final when = await pickDateTime(context, s.scheduledAt);
+              if (when == null) return;
+              await repo.put(Entities.sessions, s.copyWith(scheduledAt: when));
+              if (context.mounted) showInfo(context, 'Перенесено на ${formatWhen(when)}');
+            case 'done':
+              final end = (s.scheduledAt ?? DateTime.now()).add(Duration(minutes: s.durationMin));
+              await repo.put(Entities.sessions, s.copyWith(status: 'done', startedAt: s.scheduledAt, finishedAt: end));
+              if (context.mounted) {
+                showInfo(context, 'Отмечено проведённой — заполните отчёт и посещаемость');
+                context.push('/sessions/${s.id}/report');
+              }
+            case 'cancel':
+              if (await confirm(context, 'Отменить тренировку «${s.title}»?', text: 'Она останется в истории со статусом «Отменена».', ok: 'Отменить')) {
+                await repo.put(Entities.sessions, s.copyWith(status: 'cancelled'));
+              }
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'move', child: ListTile(leading: Icon(Icons.event_repeat), title: Text('Перенести'))),
+          PopupMenuItem(value: 'done', child: ListTile(leading: Icon(Icons.task_alt), title: Text('Отметить проведённой'))),
+          PopupMenuItem(value: 'cancel', child: ListTile(leading: Icon(Icons.event_busy), title: Text('Отменить'))),
+        ],
+      );
 }
 
 // ---------------------------------------------------------------- матч

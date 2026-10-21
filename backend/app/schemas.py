@@ -229,6 +229,18 @@ class SessionReportData(BaseModel):
     coach_confirmed: bool = False
     confirmed_at: datetime | None = None
     rpe: int | None = Field(default=None, ge=1, le=10)
+    # Комментарии по игрокам {player_id: текст} и что изменить в следующий раз.
+    player_notes: dict[str, str] = Field(default_factory=dict, max_length=60)
+    next_time: str = TextStr
+
+    @field_validator("player_notes")
+    @classmethod
+    def _notes(cls, v: dict[str, str]) -> dict[str, str]:
+        for k, text in v.items():
+            uuid.UUID(k)  # ключ — id игрока
+            if len(text) > 2000:
+                raise ValueError("player note too long")
+        return {k: t for k, t in v.items() if t.strip()}
 
 
 class PlayerAssessmentData(BaseModel):
@@ -294,9 +306,23 @@ class PlanTarget(BaseModel):
     priority: Literal["high", "medium", "low"] = "medium"
 
 
+class PlanWeek(BaseModel):
+    """Неделя индивидуальной программы: приоритет, упражнения, нагрузка, ожидаемый результат."""
+
+    n: int = Field(ge=1, le=12)
+    priority: str = Field(min_length=1, max_length=200)
+    drills: list[str] = Field(default_factory=list, max_length=10)
+    sessions: int = Field(default=2, ge=0, le=14)
+    load: str = Field(default="", max_length=300)
+    expected: str = Field(default="", max_length=500)
+    criteria: str = Field(default="", max_length=500)
+    done: bool = False
+    comment: str = Field(default="", max_length=1000)
+
+
 class DevelopmentPlanData(BaseModel):
     player_id: uuid.UUID
-    period: Literal["week", "month", "season", "cycle4", "cycle6"]
+    period: Literal["week", "month", "season", "cycle4", "cycle6", "cycle8", "cycle12"]
     title: str = Field(min_length=1, max_length=150)
     starts_on: str | None = DateStr
     ends_on: str | None = DateStr
@@ -306,6 +332,7 @@ class DevelopmentPlanData(BaseModel):
     shared: bool = True
     key_goal: str = Field(default="", max_length=1000)
     targets: list[PlanTarget] = Field(default_factory=list, max_length=12)
+    weeks: list[PlanWeek] = Field(default_factory=list, max_length=12)
 
 
 class TacticBoardData(BaseModel):
