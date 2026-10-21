@@ -644,6 +644,18 @@ class TeamStatsTable extends ConsumerStatefulWidget {
 class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
   String _group = 'main';
   String _sort = 'goals';
+  String _line = 'all';
+
+  /// Линии: короткая метка в таблице, фильтр и цвет. Игроков разных позиций оценивают по-разному,
+  /// поэтому в «Все позиции» таблица разбита по линиям, а у вратарей свой набор показателей.
+  static const _lines = {
+    'GK': ('ВР', 'Вратари', Color(0xFFF59E0B)),
+    'DF': ('ЗЩ', 'Защитники', Color(0xFF3B82F6)),
+    'MF': ('ПЗ', 'Полузащитники', Color(0xFF22C55E)),
+    'FW': ('НП', 'Нападающие', Color(0xFFEF4444)),
+  };
+  static const _lineOrder = ['GK', 'DF', 'MF', 'FW'];
+  static int _lineIndex(String? pos) => _lineOrder.contains(pos) ? _lineOrder.indexOf(pos!) : _lineOrder.length;
 
   static String _int(double v) => v.round().toString();
   static String _f1(double v) => v.toStringAsFixed(1);
@@ -693,6 +705,19 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
     ]),
   };
 
+  static final _keeperCols = <(String, String, double Function(SeasonStats), String Function(double))>[
+    ('games', 'И', (s) => s.games.toDouble(), _int),
+    ('minutes', 'Мин', (s) => s.minutes.toDouble(), _int),
+    ('saves', 'Сейв', (s) => s['saves'], _int),
+    ('conceded', 'Проп', (s) => s['conceded'], _int),
+    ('conceded90', 'Проп/90', (s) => s.per90('conceded'), (v) => v.toStringAsFixed(2)),
+    ('clean', 'Сух', (s) => s.cleanSheets.toDouble(), _int),
+    ('pass', 'Пер%', (s) => s.passAccuracy ?? -1, _pct),
+    ('rating', 'Оц', (s) => s.avgRating ?? -1, (v) => v < 0 ? '—' : _f1(v)),
+  ];
+  static const _keeperLegend =
+      'Сейв — отражённые удары, Проп — пропущенные голы, Проп/90 — за полный матч, Сух — матчи без пропущенных, Оц — средняя оценка.';
+
   static const _legend = {
     'main': 'И — игры, Г — голы, П — голевые передачи, Пер% — точность передач, Оц — средняя оценка.',
     'attack': 'Уд — удары, УдС — в створ, Створ% — доля ударов в створ, Г/90 — голы за 90 минут, Обв — удачные обводки.',
@@ -707,12 +732,19 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
     final matches = (ref.watch(matchesProvider).value ?? const <Match>[]).where((m) => m.teamId == widget.team.id).toList();
     final matchIds = {for (final m in matches) m.id};
     final season = seasonStats((ref.watch(matchStatsProvider).value ?? const <MatchStat>[]).where((s) => matchIds.contains(s.matchId)));
-    final cols = _groups[_group]!.$2;
-    if (!cols.any((c) => c.$1 == _sort)) _sort = cols.first.$1;
+    final played = [for (final p in players) if (season[p.id] != null && season[p.id]!.games > 0) (p, season[p.id]!)];
+    final lines = {for (final (p, _) in played) if (_lines.containsKey(p.position)) p.position!};
+    if (_line != 'all' && !lines.contains(_line)) _line = 'all';
+    final keepers = _line == 'GK';
+    final cols = keepers ? _keeperCols : _groups[_group]!.$2;
+    if (!cols.any((c) => c.$1 == _sort)) _sort = cols.firstWhere((c) => c.$1 == 'rating', orElse: () => cols.first).$1;
     final sortBy = cols.firstWhere((c) => c.$1 == _sort).$3;
-    final rows = [for (final p in players) if (season[p.id] != null && season[p.id]!.games > 0) (p, season[p.id]!)]
-      ..sort((a, b) => sortBy(b.$2).compareTo(sortBy(a.$2)));
-    if (rows.isEmpty) {
+    final rows = [for (final r in played) if (_line == 'all' || r.$1.position == _line) r]
+      ..sort((a, b) {
+        final byLine = _line == 'all' ? _lineIndex(a.$1.position).compareTo(_lineIndex(b.$1.position)) : 0;
+        return byLine != 0 ? byLine : sortBy(b.$2).compareTo(sortBy(a.$2));
+      });
+    if (played.isEmpty) {
       return ListView(padding: const EdgeInsets.all(16), children: [
         DemoFillCard(team: widget.team),
         const EmptyState(
@@ -736,21 +768,41 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
             style: const TextStyle(color: AppColors.textMuted)),
       ),
       const SizedBox(height: 8),
-      // Группы показателей — как вкладки в профессиональной аналитике.
-      SizedBox(
-        height: 40,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
-          for (final e in _groups.entries)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: Text(e.value.$1),
-                selected: _group == e.key,
-                onSelected: (_) => setState(() => _group = e.key),
+      // Позиции: сравнивать игроков честнее внутри одной линии.
+      if (lines.isNotEmpty) ...[
+        SizedBox(
+          height: 40,
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+            for (final key in ['all', ..._lineOrder.where(lines.contains)])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  avatar: key == 'all' ? null : _LineDot(color: _lines[key]!.$3),
+                  label: Text(key == 'all' ? 'Все позиции' : _lines[key]!.$2),
+                  selected: _line == key,
+                  onSelected: (_) => setState(() => _line = key),
+                ),
               ),
-            ),
-        ]),
-      ),
+          ]),
+        ),
+        const SizedBox(height: 6),
+      ],
+      // Группы показателей — как вкладки в профессиональной аналитике. У вратарей свой набор.
+      if (!keepers)
+        SizedBox(
+          height: 40,
+          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+            for (final e in _groups.entries)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  label: Text(e.value.$1),
+                  selected: _group == e.key,
+                  onSelected: (_) => setState(() => _group = e.key),
+                ),
+              ),
+          ]),
+        ),
       const SizedBox(height: 4),
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -763,6 +815,7 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
           dataRowMaxHeight: 44,
           columns: [
             const DataColumn(label: Text('Игрок')),
+            const DataColumn(label: Text('Поз')),
             for (final (k, label, _, _) in cols)
               DataColumn(
                 numeric: true,
@@ -777,6 +830,7 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
                 cells: [
                   DataCell(Text(p.lastName.isEmpty ? p.firstName : '${p.lastName} ${p.firstName.characters.first}.',
                       style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+                  DataCell(_LineBadge(line: _lines[p.position])),
                   for (final (_, _, value, fmt) in cols) DataCell(Text(fmt(value(s)))),
                 ],
               ),
@@ -786,8 +840,49 @@ class _TeamStatsTableState extends ConsumerState<TeamStatsTable> {
       const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Text(_legend[_group]!, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        child: Text(
+            [
+              keepers ? _keeperLegend : _legend[_group]!,
+              if (!keepers)
+                'Поз: ВР — вратарь, ЗЩ — защитник, ПЗ — полузащитник, НП — нападающий. '
+                    'Сравнивайте игроков одной линии: у защитника и нападающего разные главные показатели.',
+            ].join('\n'),
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ),
     ]);
+  }
+}
+
+class _LineDot extends StatelessWidget {
+  const _LineDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+}
+
+class _LineBadge extends StatelessWidget {
+  const _LineBadge({required this.line});
+
+  final (String, String, Color)? line;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = line;
+    if (l == null) return const Text('—', style: TextStyle(color: AppColors.textMuted));
+    return Tooltip(
+      message: l.$2,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: l.$3.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: l.$3.withValues(alpha: 0.6)),
+        ),
+        child: Text(l.$1, style: TextStyle(color: l.$3, fontSize: 12, fontWeight: FontWeight.w700)),
+      ),
+    );
   }
 }
