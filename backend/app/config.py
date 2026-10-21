@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # Регистраций с одного адреса в час (на тестовом стенде e2e — больше).
+    register_limit_per_hour: int = 10
+
     # Внешний адрес API для ссылок родителям (https://api.example.ru). Пусто — адрес из запроса.
     public_base_url: str = ""
     # Часовой пояс для дат на странице родителей (Пермь — Asia/Yekaterinburg).

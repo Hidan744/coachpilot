@@ -49,13 +49,14 @@ async def register(body: RegisterIn, request: Request, db: AsyncSession = Depend
 
 @router.post("/login", response_model=TokensOut)
 async def login(body: LoginIn, request: Request, db: AsyncSession = Depends(get_db)) -> TokensOut:
-    email = body.email.lower()
-    if not login_ip_limiter.hit(request.client.host if request.client else "-"):
+    email, ip = body.email.lower(), request.client.host if request.client else "-"
+    if login_ip_limiter.blocked(ip):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много попыток входа. Подождите 15 минут.")
     if not login_email_limiter.hit(email):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много попыток входа. Подождите минуту.")
     user = await db.scalar(select(User).where(func.lower(User.email) == body.email.lower()))
     if not verify_password(user.password_hash if user else None, body.password):
+        login_ip_limiter.hit(ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")
     login_email_limiter.reset(email)
     return await _issue_tokens(db, user)

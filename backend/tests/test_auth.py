@@ -107,3 +107,15 @@ async def test_register_limited_by_ip(client):
     codes = [(await client.post("/auth/register", json=body | {"email": f"r{i}@example.com"})).status_code
              for i in range(11)]
     assert codes[:10] == [201] * 10 and codes[10] == 429
+
+
+async def test_successful_logins_do_not_count_toward_ip_limit(client):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    await make_user(client, email="club@example.com")
+    async with AsyncClient(transport=ASGITransport(app=app, client=("10.2.0.1", 1)), base_url="http://test") as c:
+        for _ in range(25):  # тренеры клуба входят с одного адреса
+            r = await c.post("/auth/login", json={"email": "club@example.com", "password": "secret123"})
+            assert r.status_code == 200

@@ -7,6 +7,8 @@
 import time
 from collections import defaultdict, deque
 
+from app.config import get_settings
+
 
 class RateLimiter:
     def __init__(self, limit: int, window_sec: float, max_keys: int = 50_000):
@@ -26,6 +28,16 @@ class RateLimiter:
             self._prune(now)
         return True
 
+    def blocked(self, key: str) -> bool:
+        """Исчерпан ли лимит, без регистрации новой попытки."""
+        q = self._hits.get(key)
+        if not q:
+            return False
+        now = time.monotonic()
+        while q and now - q[0] > self.window:
+            q.popleft()
+        return len(q) >= self.limit
+
     def _prune(self, now: float) -> None:
         """Удаляет только устаревшие ключи: активные счётчики сбросить переполнением нельзя."""
         for k in [k for k, q in self._hits.items() if not q or now - q[-1] > self.window]:
@@ -38,9 +50,10 @@ class RateLimiter:
         self._hits.clear()
 
 
-# С одного адреса — не больше 20 попыток за 15 минут на любые email: защита от перебора.
+# С одного адреса — не больше 20 неудачных входов за 15 минут на любые email: защита от перебора.
+# Удачные входы не считаются: тренеры одного клуба часто выходят в сеть с одного адреса.
 login_ip_limiter = RateLimiter(limit=20, window_sec=900)
 # На один email — 10 попыток в минуту с любых адресов: чужой человек не заблокирует тренера надолго.
 login_email_limiter = RateLimiter(limit=10, window_sec=60)
 # Регистрации с одного адреса — не больше 10 в час: нельзя перебором проверять, какие email заняты.
-register_ip_limiter = RateLimiter(limit=10, window_sec=3600)
+register_ip_limiter = RateLimiter(limit=get_settings().register_limit_per_hour, window_sec=3600)

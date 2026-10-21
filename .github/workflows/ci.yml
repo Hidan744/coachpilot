@@ -99,6 +99,8 @@ jobs:
           --health-cmd "pg_isready -U coachpilot" --health-interval 5s --health-retries 10
     env:
       CP_DATABASE_URL: postgresql+asyncpg://coachpilot:coachpilot@localhost:5432/coachpilot
+      # Все сценарии регистрируют пользователей с одного адреса.
+      CP_REGISTER_LIMIT_PER_HOUR: "1000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
