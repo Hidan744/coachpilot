@@ -182,3 +182,21 @@ async def test_catalog_empty_and_versioned(client):
     assert r == {"version": "", "changed": True, "drills": []}
     r = (await client.get("/catalog/drills?version=", headers=h)).json()
     assert r["changed"] is False
+
+
+async def test_constructor_fields_roundtrip(client):
+    """Пояснение, дозировка, вариант блока и параметры конструктора не теряются при синхронизации."""
+    h, _ = await make_user(client)
+    s_id = uuid.uuid4()
+    data = session_data()
+    data["blocks"][1] |= {"why": "Цель «передачи» → категория «Передачи»", "dosage": "3 серии × 14 мин", "variant": "easier"}
+    data["params"] = {"format": "group", "intensity": "high", "positions": ["DF"], "level": "beginner"}
+    res = await push(client, h, up("training_sessions", s_id, data))
+    assert res[0]["status"] == "applied", res
+    rec = (await client.get("/sync/pull?since=0", headers=h)).json()["records"][0]["data"]
+    assert rec["params"]["intensity"] == "high" and rec["params"]["positions"] == ["DF"]
+    b = rec["blocks"][1]
+    assert b["why"].startswith("Цель") and b["dosage"] == "3 серии × 14 мин" and b["variant"] == "easier"
+    bad = session_data()
+    bad["blocks"][0]["variant"] = "insane"
+    assert (await push(client, h, up("training_sessions", uuid.uuid4(), bad)))[0]["status"] == "rejected"

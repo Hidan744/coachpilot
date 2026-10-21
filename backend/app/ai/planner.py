@@ -50,6 +50,10 @@ class PlanRequest(BaseModel):
     constraints: str = Field(default="", max_length=500)
     answer: str = Field(default="", max_length=500)  # ответ на уточняющий вопрос модели
     use_ai: bool = True
+    # Формат (командная / групповая / индивидуальная), интенсивность и позиции для акцента.
+    format: Literal["team", "group", "individual"] = "team"
+    intensity: Literal["low", "medium", "high"] = "medium"
+    positions: list[Literal["GK", "DF", "MF", "FW"]] = Field(default_factory=list, max_length=4)
 
 
 class PlanOut(BaseModel):
@@ -106,10 +110,15 @@ SYSTEM_PROMPT = """Ты — помощник футбольного тренер
    Для занятий короче 45 минут заминку можно не включать.
 3. Сумма duration_min всех блоков должна в точности равняться длительности занятия.
 4. Упражнения должны подходить по возрасту, числу игроков и доступному инвентарю.
-   В adaptation кратко напиши, как адаптировать упражнение к этой группе (размер зоны, группы, правила).
+   В adaptation сначала одной фразой объясни, почему упражнение подходит под цель занятия,
+   затем кратко — как адаптировать его к этой группе (размер зоны, группы, правила).
 5. Не придумывай фактические показатели игроков. Не обещай гарантированный результат,
    не утверждай, что упражнения предотвращают травмы, не давай медицинских советов.
-6. Если данных недостаточно, перечисли допущения в assumptions. Если без ответа тренера план
+6. Учитывай format (individual — без игровой части, упражнения для 1–4 человек; group — малые группы;
+   team — вся команда), intensity (low / medium / high — для основной и игровой части)
+   и positions (акцент упражнений на эти линии: GK — вратари, DF — оборона, MF — передачи и владение,
+   FW — удары и обводка).
+7. Если данных недостаточно, перечисли допущения в assumptions. Если без ответа тренера план
    составить нельзя, задай один вопрос в clarifying_question и верни пустой список blocks.
 
 Ответь строго одним JSON-объектом без пояснений:
@@ -222,6 +231,9 @@ def build_prompt(req: PlanRequest, aliases: dict[str, m.Drill], history: list[di
             "field": req.field_type,
             "equipment": req.equipment,
             "focus": req.focus,
+            "format": req.format,
+            "intensity": req.intensity,
+            "positions": req.positions,
             "constraints": scrub(req.constraints),
             "coach_answer": scrub(req.answer),
         },

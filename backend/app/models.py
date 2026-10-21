@@ -237,6 +237,8 @@ class TrainingSession(SyncMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actual: Mapped[dict] = mapped_column(JSONB, default=dict)
     conflict_of: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Параметры конструктора (формат, интенсивность, позиции, уровень) — для пересборки плана.
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class Attendance(SyncMixin, Base):

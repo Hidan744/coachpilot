@@ -42,6 +42,10 @@ flutter:
   uses-material-design: true
   assets:
     - assets/catalog.json
+    # Шрифты для PDF-экспорта (кириллица): Roboto, Apache License 2.0.
+    - assets/fonts/Roboto_400.ttf
+    - assets/fonts/Roboto_700.ttf
+    - assets/fonts/Oswald_700Bold.ttf
   fonts:
     - family: Oswald
       fonts:

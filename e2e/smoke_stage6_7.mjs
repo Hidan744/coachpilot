@@ -12,7 +12,7 @@ const secs = (c) => { const [m, s] = c.replace('+', '').split(':').map(Number); 
 const { browser, context, page } = await launch();
 try {
   const email = await registerWithTeam(page, { team: 'U14 Торпедо' });
-  await tap(page, 'Создать тренировку с AI');
+  await tap(page, 'Конструктор тренировки');
   await tap(page, 'Передачи и открывания');
   await tap(page, 'Сгенерировать план');
   await see(page, 'Предложение AI', 30000);

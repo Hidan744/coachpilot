@@ -22,7 +22,7 @@ class DemoFrame extends StatelessWidget {
     (Icons.calendar_month_outlined, 'Календарь сезона', 'Матчи, расписание команд, тренировки', '/calendar'),
     (Icons.draw_outlined, 'Тактическая доска', 'Расстановка, рисование пальцем, замены', '/tactics'),
     (Icons.groups_2_outlined, 'Состав под тактику', 'Схема и стиль игры → лучший игрок на каждое место', '/tactics/lineup'),
-    (Icons.auto_awesome, 'Тренировка с AI', 'План занятия за минуту из библиотеки упражнений', '/sessions/new'),
+    (Icons.auto_awesome, 'Конструктор тренировки', 'Цель, формат, интенсивность → план с таймингом и пояснениями', '/sessions/new'),
     (Icons.menu_book_outlined, 'Библиотека упражнений', 'Анимированные схемы, свои упражнения', '/library'),
   ];
 

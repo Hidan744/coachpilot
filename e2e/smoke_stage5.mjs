@@ -6,7 +6,7 @@ try {
   await tap(page, 'Календарь');
   await tap(page, 'Тренировки', { exact: true });
   await see(page, 'Запланированных тренировок нет');
-  await tap(page, 'Создать с AI');
+  await tap(page, 'Конструктор', { exact: true });
   await see(page, 'Цель занятия');
   await tap(page, 'Удары по воротам');
   await shot(page, 's5-01-wizard');
@@ -54,7 +54,7 @@ try {
   await tap(page, 'Сгенерировать план');
   await see(page, 'Нет связи с сервером');
   await tap(page, 'Собрать без AI');
-  await see(page, 'План собран по правилам из библиотеки');
+  await see(page, 'Локальный подбор по правилам');
   await see(page, 'Σ 75 / 75 мин');
   await shot(page, 's5-04-offline-plan');
   step('без сети: план собран из библиотеки на телефоне');

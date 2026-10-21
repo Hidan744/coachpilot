@@ -166,6 +166,10 @@ class TrainingBlock(BaseModel):
     # в библиотеке потом изменят или удалят, и доступен офлайн.
     drill: dict[str, Any] | None = None
     notes: str = Field(default="", max_length=2000)
+    # Конструктор: почему упражнение выбрано, дозировка, вариант сложности.
+    why: str = Field(default="", max_length=1000)
+    dosage: str = Field(default="", max_length=300)
+    variant: Literal["base", "easier", "harder"] = "base"
 
 
 class TrainingSessionData(BaseModel):
@@ -185,6 +189,8 @@ class TrainingSessionData(BaseModel):
     finished_at: datetime | None = None
     actual: dict[str, Any] = Field(default_factory=dict)
     conflict_of: uuid.UUID | None = None
+    # Параметры конструктора (формат, интенсивность, позиции, уровень) — для пересборки плана.
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class AttendanceData(BaseModel):

@@ -469,6 +469,15 @@ class TrainingBlock {
   final Json? drill; // снимок упражнения
   final String notes;
 
+  /// Почему упражнение выбрано под цель занятия (заполняет конструктор).
+  final String why;
+
+  /// Дозировка: серии, время работы и отдыха — в сумме длительность блока.
+  final String dosage;
+
+  /// Вариант сложности: base, easier, harder.
+  final String variant;
+
   const TrainingBlock({
     required this.id,
     required this.phase,
@@ -477,6 +486,9 @@ class TrainingBlock {
     this.drillId,
     this.drill,
     this.notes = '',
+    this.why = '',
+    this.dosage = '',
+    this.variant = 'base',
   });
 
   Drill? get drillSnapshot => drill == null ? null : Drill.fromJson(drillId ?? id, drill!);
@@ -489,6 +501,9 @@ class TrainingBlock {
         drillId: j['drill_id'],
         drill: j['drill'] as Json?,
         notes: j['notes'] ?? '',
+        why: j['why'] ?? '',
+        dosage: j['dosage'] ?? '',
+        variant: j['variant'] ?? 'base',
       );
 
   Json toJson() => {
@@ -499,9 +514,13 @@ class TrainingBlock {
         'drill_id': drillId,
         'drill': drill,
         'notes': notes,
+        if (why.isNotEmpty) 'why': why,
+        if (dosage.isNotEmpty) 'dosage': dosage,
+        if (variant != 'base') 'variant': variant,
       };
 
-  TrainingBlock copyWith({String? phase, String? title, int? durationMin, String? notes}) => TrainingBlock(
+  TrainingBlock copyWith({String? phase, String? title, int? durationMin, String? notes, String? why, String? dosage, String? variant}) =>
+      TrainingBlock(
         id: id,
         phase: phase ?? this.phase,
         title: title ?? this.title,
@@ -509,6 +528,9 @@ class TrainingBlock {
         drillId: drillId,
         drill: drill,
         notes: notes ?? this.notes,
+        why: why ?? this.why,
+        dosage: dosage ?? this.dosage,
+        variant: variant ?? this.variant,
       );
 }
 
@@ -543,6 +565,9 @@ class TrainingSession implements Entity {
   final Json actual;
   final String? conflictOf;
 
+  /// Параметры конструктора (формат, интенсивность, позиции, уровень…) — чтобы пересобрать план.
+  final Json params;
+
   TrainingSession({
     required this.id,
     this.teamId,
@@ -561,6 +586,7 @@ class TrainingSession implements Entity {
     this.finishedAt,
     this.actual = const {},
     this.conflictOf,
+    this.params = const {},
   });
 
   int get plannedMinutes => blocks.fold(0, (a, b) => a + b.durationMin);
@@ -583,6 +609,7 @@ class TrainingSession implements Entity {
         finishedAt: _date(j['finished_at']),
         actual: (j['actual'] as Json?) ?? {},
         conflictOf: j['conflict_of'],
+        params: (j['params'] as Json?) ?? const {},
       );
 
   @override
@@ -603,6 +630,7 @@ class TrainingSession implements Entity {
         'finished_at': _iso(finishedAt),
         'actual': actual,
         'conflict_of': conflictOf,
+        if (params.isNotEmpty) 'params': params,
       };
 
   TrainingSession copyWith({
@@ -617,6 +645,9 @@ class TrainingSession implements Entity {
     DateTime? startedAt,
     DateTime? finishedAt,
     Json? actual,
+    List<String>? aiAssumptions,
+    Json? params,
+    bool? aiGenerated,
   }) =>
       TrainingSession(
         id: id,
@@ -629,13 +660,14 @@ class TrainingSession implements Entity {
         fieldType: fieldType,
         equipment: equipment,
         status: status ?? this.status,
-        aiGenerated: aiGenerated,
-        aiAssumptions: aiAssumptions,
+        aiGenerated: aiGenerated ?? this.aiGenerated,
+        aiAssumptions: aiAssumptions ?? this.aiAssumptions,
         blocks: blocks ?? this.blocks,
         startedAt: startedAt ?? this.startedAt,
         finishedAt: finishedAt ?? this.finishedAt,
         actual: actual ?? this.actual,
         conflictOf: conflictOf,
+        params: params ?? this.params,
       );
 }
 

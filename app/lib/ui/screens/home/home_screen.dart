@@ -360,7 +360,7 @@ class _QuickActions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = <(IconData, String, VoidCallback)>[
-      (Icons.auto_awesome, 'Тренировка\nс AI', () => context.push('/sessions/new')),
+      (Icons.auto_awesome, 'Конструктор\nтренировки', () => context.push('/sessions/new')),
       (Icons.calendar_month_outlined, 'Календарь\nсезона', () => context.go('/calendar')),
       (Icons.draw_outlined, 'Тактическая\nдоска', () => context.push('/tactics')),
       (Icons.insights_outlined, 'Дашборд\nкоманды', () => context.go('/team?tab=1')),
@@ -381,7 +381,7 @@ class _QuickActions extends ConsumerWidget {
       children: [
         for (var k = 0; k < items.length; k++)
           Semantics(
-            label: k == 0 ? 'Создать тренировку с AI' : items[k].$2.replaceAll('\n', ' '),
+            label: k == 0 ? 'Конструктор тренировки' : items[k].$2.replaceAll('\n', ' '),
             button: true,
             excludeSemantics: true,
             child: Material(

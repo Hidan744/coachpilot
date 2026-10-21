@@ -15,7 +15,7 @@ try {
   await tap(page, 'Создать тренировку с AI');
   await tap(page, 'Удары по воротам');
   await tap(page, 'Сгенерировать план');
-  await see(page, 'План собран по правилам из библиотеки');
+  await see(page, 'Локальный подбор по правилам');
   await see(page, 'Σ 75 / 75 мин');
   await tap(page, 'Сохранить', { exact: true });
   await see(page, 'Провести');
