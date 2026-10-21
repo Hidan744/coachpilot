@@ -20,9 +20,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models as m
-from app.ai import rules
+from app.ai import quota, rules
 from app.ai.providers import LLMProvider, ProviderError
-from app.ai.quota import quota_ok
 from app.schemas import DRILL_CATEGORIES, DrillData, TrainingBlock
 
 log = logging.getLogger("coachpilot.ai")
@@ -391,8 +390,8 @@ async def generate_plan(db: AsyncSession, provider: LLMProvider, owner_id, req: 
     if not req.use_ai:
         return by_rules(None)
 
-    ok, sub = await quota_ok(db, owner_id)
-    if not ok:
+    reserved = await quota.reserve(db, owner_id)
+    if reserved is False:
         return by_rules("Лимит AI-генераций на этот месяц исчерпан — план собран по правилам из библиотеки.")
 
     user_prompt = build_prompt(req, aliases, history, scrub)
@@ -421,8 +420,6 @@ async def generate_plan(db: AsyncSession, provider: LLMProvider, owner_id, req: 
         if not ans.blocks and not ans.clarifying_question:
             raise ProviderError("empty plan after autofix")
         entry.valid = True
-        if sub is not None:
-            sub.ai_used += 1
         return PlanOut(title=ans.title, blocks=to_blocks(ans, aliases), assumptions=ans.assumptions,
                        clarifying_question=ans.clarifying_question if not ans.blocks else None,
                        source="ai", warnings=warnings)
@@ -432,5 +429,7 @@ async def generate_plan(db: AsyncSession, provider: LLMProvider, owner_id, req: 
         return by_rules("AI сейчас недоступен — план собран по правилам из библиотеки. Попробуйте позже.")
     finally:
         entry.latency_ms = int((time.monotonic() - started) * 1000)
+        if reserved and not entry.valid:
+            await quota.release(db, owner_id)
         db.add(entry)
         await db.commit()

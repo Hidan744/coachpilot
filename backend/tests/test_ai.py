@@ -314,3 +314,36 @@ async def test_quota_resets_in_new_month_for_report_and_drills(client, provider)
         assert out["source"] == "ai", (path, out)
         async with SessionLocal() as db:
             assert (await db.scalars(select(m.Subscription))).one().ai_used == 1, path
+
+
+class _LockProbe(MockProvider):
+    """Во время запроса к модели проверяет из другой сессии, что строка подписки не заблокирована."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.seen: list[int] = []
+
+    async def complete(self, system, user, *, temperature=0.4):
+        async with SessionLocal() as db:
+            sub = (await db.scalars(select(m.Subscription).with_for_update(nowait=True))).one()
+            self.seen.append(sub.ai_used)
+            await db.rollback()
+        return await super().complete(system, user, temperature=temperature)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_subscription_not_locked_during_llm_call(client, seeded, fail):
+    probe = _LockProbe(fail=fail)
+    app.dependency_overrides[get_provider] = lambda: probe
+    try:
+        h, _ = await make_user(client)
+        s = await _session_with_players(client, h)
+        await plan(client, h)
+        await client.post("/ai/report", headers=h, json={"session_id": str(s), "went_well": "Темп"})
+        await client.post("/ai/drills/parse", headers=h, json={"text": "Квадрат 4 на 2\nЧетверо держат мяч"})
+    finally:
+        app.dependency_overrides.pop(get_provider, None)
+    assert probe.seen == [1, 2, 3] if not fail else probe.seen == [1, 1, 1]  # лимит зарезервирован до вызова
+    async with SessionLocal() as db:
+        sub = (await db.scalars(select(m.Subscription))).one()
+    assert sub.ai_used == (0 if fail else 3)  # при ошибке модели резерв возвращён

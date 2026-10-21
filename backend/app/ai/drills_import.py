@@ -11,9 +11,9 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models as m
+from app.ai import quota
 from app.ai.planner import FORBIDDEN, extract_json
 from app.ai.providers import LLMProvider, ProviderError
-from app.ai.quota import quota_ok
 from app.schemas import DRILL_CATEGORIES, DrillData
 
 SYSTEM_PROMPT = f"""Ты помогаешь футбольному тренеру перенести его упражнения в библиотеку приложения.
@@ -95,9 +95,10 @@ def _to_drill(d: _AIDrill) -> DrillData | None:
 async def parse_drills(db: AsyncSession, provider: LLMProvider, owner_id, req: ParseRequest) -> ParseOut:
     entry = m.AIRequest(user_id=owner_id, kind="drills_import", provider=provider.name, model="")
     started = time.monotonic()
+    reserved = None
     try:
-        ok, sub = await quota_ok(db, owner_id)
-        if not ok:
+        reserved = await quota.reserve(db, owner_id)
+        if reserved is False:
             entry.error = "quota"
             warning = "Лимит AI на месяц исчерпан — текст разобран без AI."
             return ParseOut(drills=[], source="manual", warnings=[warning])
@@ -112,13 +113,13 @@ async def parse_drills(db: AsyncSession, provider: LLMProvider, owner_id, req: P
         if not drills:
             raise ProviderError("no drills parsed")
         entry.valid = True
-        if sub is not None:
-            sub.ai_used += 1
         return ParseOut(drills=drills, source="ai")
     except ProviderError as e:
         entry.error = str(e)[:1000]
         return ParseOut(drills=[], source="manual", warnings=["AI сейчас недоступен — текст разобран без AI."])
     finally:
         entry.latency_ms = int((time.monotonic() - started) * 1000)
+        if reserved and not entry.valid:
+            await quota.release(db, owner_id)
         db.add(entry)
         await db.commit()

@@ -17,9 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models as m
+from app.ai import quota
 from app.ai.planner import FORBIDDEN, extract_json, stem
 from app.ai.providers import LLMProvider, ProviderError
-from app.ai.quota import quota_ok
 
 SYSTEM_PROMPT = """Ты помогаешь футбольному тренеру оформить отчёт о проведённом занятии на русском языке.
 Используй только то, что написал тренер, и данные о занятии. Не придумывай факты, оценки и показатели игроков.
@@ -120,9 +120,10 @@ async def structure_report(db: AsyncSession, provider: LLMProvider, owner_id, re
 
     entry = m.AIRequest(user_id=owner_id, kind="report", provider=provider.name, model="")
     started = time.monotonic()
+    reserved = None
     try:
-        ok, sub = await quota_ok(db, owner_id)
-        if not ok:
+        reserved = await quota.reserve(db, owner_id)
+        if reserved is False:
             entry.error = "quota"
             return ReportOut(went_well=req.went_well, to_improve=req.to_improve, observations=req.observations,
                              suggestions=[], source="manual",
@@ -134,8 +135,6 @@ async def structure_report(db: AsyncSession, provider: LLMProvider, owner_id, re
         except (ValueError, ValidationError) as e:
             raise ProviderError(f"invalid report json: {e}") from e
         entry.valid = True
-        if sub is not None:
-            sub.ai_used += 1
         return ReportOut(
             went_well=ps.restore(_clean(rep.went_well)),
             to_improve=ps.restore(_clean(rep.to_improve)),
@@ -151,5 +150,7 @@ async def structure_report(db: AsyncSession, provider: LLMProvider, owner_id, re
                          warnings=["AI сейчас недоступен — текст перенесён в отчёт без обработки."])
     finally:
         entry.latency_ms = int((time.monotonic() - started) * 1000)
+        if reserved and not entry.valid:
+            await quota.release(db, owner_id)
         db.add(entry)
         await db.commit()
