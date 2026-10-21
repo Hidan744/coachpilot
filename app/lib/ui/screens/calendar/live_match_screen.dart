@@ -4,12 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/lineup.dart';
 import '../../../core/performance.dart';
+import '../../../core/tactics.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
+import '../tactics/lineup_screen.dart';
+import '../tactics/tactics_screens.dart';
 import '../team/performance_providers.dart';
 import '../team/team_screens.dart';
 
@@ -52,11 +56,11 @@ final _liveMatchProvider = StreamProvider.family<Match?, String>(
 
 /// Запись журнала: что отмечено и как было до этого — для отмены.
 class _Entry {
-  _Entry(this.minute, this.text, {this.before, this.matchBefore});
+  _Entry(this.minute, this.text, {this.before = const [], this.matchBefore});
 
   final int minute;
   final String text;
-  final MatchStat? before;
+  final List<MatchStat> before;
   final Match? matchBefore;
 }
 
@@ -122,7 +126,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
       matchBefore = m;
       await _saveScore(m, ourGoals + 1, m.scoreAgainst ?? 0);
     }
-    setState(() => _log.insert(0, _Entry(_minute, '${_short(p)} — ${e.label}', before: current ?? base, matchBefore: matchBefore)));
+    setState(() => _log.insert(0, _Entry(_minute, '${_short(p)} — ${e.label}', before: [current ?? base], matchBefore: matchBefore)));
   }
 
   Future<void> _opponentGoal(Match m, List<Player> players, Map<String, MatchStat> stats, int ourGoals) async {
@@ -134,18 +138,139 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
       await ref.read(repoProvider).put(Entities.matchStats, before.copyWith(stats: applyStatDelta(before.stats, 'conceded', 1)));
     }
     await _saveScore(m, ourGoals, (m.scoreAgainst ?? 0) + 1);
-    setState(() => _log.insert(0, _Entry(_minute, 'Гол соперника', before: before, matchBefore: m)));
+    setState(() => _log.insert(0, _Entry(_minute, 'Гол соперника', before: [?before], matchBefore: m)));
   }
 
   Future<void> _saveScore(Match m, int ours, int theirs) => ref
       .read(repoProvider)
       .put(Entities.matches, Match.fromJson(m.id, m.toJson()..['score_for'] = ours..['score_against'] = theirs..['status'] = 'played'));
 
+  /// Стартовый состав: отмеченные игроки на поле с первой минуты.
+  Future<void> _setStarters(Match m, List<Player> picked, Map<String, MatchStat> stats) async {
+    final repo = ref.read(repoProvider);
+    final before = <MatchStat>[];
+    for (final p in picked) {
+      final cur = stats[p.id] ?? MatchStat(id: matchStatId(m.id, p.id), matchId: m.id, playerId: p.id);
+      before.add(cur);
+      await repo.put(Entities.matchStats, cur.copyWith(started: true, minutes: m.durationMin));
+    }
+    setState(() => _log.insert(0, _Entry(_minute, 'Стартовый состав: ${picked.length} игроков', before: before)));
+  }
+
+  /// Замена: ушедший играл до этой минуты, вышедший — с этой минуты до конца.
+  Future<MatchStat> _substitute(Match m, Player out, Player into, Map<String, MatchStat> stats) async {
+    final repo = ref.read(repoProvider);
+    final minute = clampMinute(_minute, m.durationMin);
+    final o = stats[out.id] ?? MatchStat(id: matchStatId(m.id, out.id), matchId: m.id, playerId: out.id, started: true, minutes: m.durationMin);
+    final i = stats[into.id] ?? MatchStat(id: matchStatId(m.id, into.id), matchId: m.id, playerId: into.id);
+    // Вышедший на замену уходит: из его минут вычитаем оставшееся время.
+    final outMinutes = o.started ? minute : (o.minutes - (m.durationMin - minute)).clamp(1, m.durationMin);
+    await repo.put(Entities.matchStats, o.copyWith(minutes: outMinutes, started: o.started || o.minutes == 0));
+    final next = i.copyWith(started: false, minutes: (m.durationMin - minute).clamp(1, m.durationMin));
+    await repo.put(Entities.matchStats, next);
+    if (_selected == out.id) _selected = into.id;
+    setState(() => _log.insert(0, _Entry(minute, 'Замена: ${_short(into)} вместо ${_short(out)}', before: [o, i])));
+    if (mounted) showInfo(context, 'Замена на $minute′: ${_short(into)} вместо ${_short(out)}');
+    return next;
+  }
+
+  /// Действие игрока со скамейки, когда состав уже на поле: сначала замена — кого он меняет.
+  Future<void> _act(Match m, Player p, LiveEvent e, Map<String, MatchStat> stats, List<Player> onField, int ourGoals) async {
+    var current = stats[p.id];
+    if (onField.isNotEmpty && (current?.minutes ?? 0) == 0) {
+      final out = await _pickPlayer('${_short(p)} на скамейке. Кого он меняет?', onField);
+      if (out == null || !mounted) return;
+      current = await _substitute(m, out, p, stats);
+    }
+    await _record(m, p, current, e, ourGoals);
+  }
+
+  Future<Player?> _pickPlayer(String title, List<Player> from) => showModalBottomSheet<Player>(
+        context: context,
+        showDragHandle: true,
+        isScrollControlled: true,
+        builder: (c) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          builder: (c, scroll) => ListView(controller: scroll, children: [
+            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: Text(title, style: Theme.of(c).textTheme.titleMedium)),
+            for (final p in from)
+              ListTile(
+                leading: CircleAvatar(child: Text(p.number?.toString() ?? '—')),
+                title: Text(p.fullName),
+                subtitle: Text(Positions.all[p.position] ?? ''),
+                onTap: () => Navigator.pop(c, p),
+              ),
+          ]),
+        ),
+      );
+
+  Future<void> _startersSheet(Match m, List<Player> players, Map<String, MatchStat> stats, List<Player> suggested) async {
+    final picked = {for (final p in suggested) p.id};
+    final need = playersInFormation(_formation(m));
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(
+        builder: (c, set) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          builder: (c, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+            Text('Стартовый состав', style: Theme.of(c).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(
+              suggested.isEmpty
+                  ? 'Отметьте, кто выходит с первой минуты.'
+                  : 'Отмечены игроки из подбора состава под схему ${_formation(m)}. Поправьте, если нужно.',
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final p in players)
+                FilterChip(
+                  label: Text('${p.number ?? ''} ${_short(p)}'.trim()),
+                  selected: picked.contains(p.id),
+                  onSelected: (v) => set(() => v ? picked.add(p.id) : picked.remove(p.id)),
+                ),
+            ]),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: picked.isEmpty ? null : () => Navigator.pop(c, true),
+              child: Text('На поле: ${picked.length}${picked.length == need ? '' : ' (по схеме $need)'}'),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (ok == true) await _setStarters(m, [for (final p in players) if (picked.contains(p.id)) p], stats);
+  }
+
+  Future<void> _manualSub(Match m, List<Player> onField, List<Player> bench, Map<String, MatchStat> stats) async {
+    if (bench.isEmpty) return showInfo(context, 'На скамейке никого нет');
+    final out = await _pickPlayer('Кто уходит?', onField);
+    if (out == null || !mounted) return;
+    final into = await _pickPlayer('Кто выходит вместо ${_short(out)}?', bench);
+    if (into != null) await _substitute(m, out, into, stats);
+  }
+
+  /// Схема на матч: доска этого матча, иначе последняя доска команды, иначе обычная для формата.
+  String _formation(Match m) {
+    final boards = ref.read(boardsProvider).value ?? const <TacticBoard>[];
+    final board = boards.where((b) => b.matchId == m.id && b.formation.isNotEmpty).firstOrNull ??
+        boards.where((b) => b.teamId == m.teamId && b.formation.isNotEmpty).lastOrNull;
+    final team = (ref.read(teamsProvider).value ?? const <Team>[]).where((t) => t.id == m.teamId).firstOrNull;
+    final options = formationsFor(team?.defaultPlayers ?? 11);
+    return board != null && options.contains(board.formation) ? board.formation : options[options.length > 1 ? 1 : 0];
+  }
+
   Future<void> _undo() async {
     if (_log.isEmpty) return;
     final e = _log.removeAt(0);
     final repo = ref.read(repoProvider);
-    if (e.before != null) await repo.put(Entities.matchStats, e.before!);
+    for (final b in e.before) {
+      await repo.put(Entities.matchStats, b);
+    }
     if (e.matchBefore != null) await repo.put(Entities.matches, e.matchBefore!);
     if (mounted) {
       setState(() {});
@@ -170,6 +295,23 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
       // Наши голы: счёт матча, а если его ещё нет — сумма голов, уже отмеченных игрокам.
       final ourGoals = m.scoreFor ?? stats.values.fold<double>(0, (a, s) => a + s['goals']).round();
       final keeper = selected?.position == 'GK';
+      // Кто на поле и кто на скамейке — по статистике матча.
+      final onField = [for (final p in players) if (onFieldNow(stats[p.id], m.durationMin)) p];
+      final bench = [for (final p in players) if ((stats[p.id]?.minutes ?? 0) == 0) p];
+      final data = ref.watch(lineupDataProvider((m.teamId, m.id)));
+      final minute = clampMinute(_minute, m.durationMin);
+      final advice = data == null || onField.isEmpty
+          ? const <SubAdvice>[]
+          : substitutionAdvice(
+              onField: onField,
+              bench: bench,
+              live: stats,
+              minute: minute,
+              ourGoals: ourGoals,
+              theirGoals: m.scoreAgainst ?? 0,
+              season: data.$2,
+              ready: data.$3,
+            );
       final events = [for (final e in liveEvents) if (!e.keeper || keeper) e];
       final mm = (_seconds ~/ 60).toString().padLeft(2, '0'), ss = (_seconds % 60).toString().padLeft(2, '0');
 
@@ -221,6 +363,54 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
             label: const Text('Гол соперника'),
           ),
           const SizedBox(height: 12),
+          if (onField.isEmpty)
+            _LiveCard(
+              icon: Icons.groups_2_outlined,
+              title: 'Стартовый состав',
+              text: 'Отметьте, кто выходит с первой минуты, — тогда приложение подскажет замены по ходу матча.',
+              child: FilledButton.icon(
+                onPressed: () {
+                  final formation = _formation(m);
+                  final suggested = data == null || players.length < playersInFormation(formation)
+                      ? const <Player>[]
+                      : suggestLineup(formation: formation, style: 'press', players: players, season: data.$2, ready: data.$3)
+                          .players
+                          .whereType<Player>()
+                          .toList();
+                  _startersSheet(m, players, stats, suggested);
+                },
+                icon: const Icon(Icons.checklist),
+                label: const Text('Отметить стартовый состав'),
+              ),
+            )
+          else if (advice.isEmpty)
+            // Менять некого — одна строка, чтобы не отодвигать кнопки действий.
+            Row(children: [
+              const Icon(Icons.swap_vert, color: AppColors.textMuted, size: 20),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Замены $minute′: пока менять некого', style: const TextStyle(color: AppColors.textMuted)),
+              ),
+              TextButton(onPressed: () => _manualSub(m, onField, bench, stats), child: Text('Замена · на поле ${onField.length}')),
+            ])
+          else
+            _LiveCard(
+              icon: Icons.swap_vert,
+              title: 'Подсказки замен · $minute′',
+              text: 'По действиям в этом матче, карточкам, нагрузке за неделю и счёту.',
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                for (final a in advice) _SubTile(advice: a, onApply: a.into == null ? null : () => _substitute(m, a.out, a.into!, stats)),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _manualSub(m, onField, bench, stats),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: Text('Сделать замену вручную · на поле ${onField.length}'),
+                  ),
+                ),
+              ]),
+            ),
+          const SizedBox(height: 12),
           Text(selected == null ? '1. Выберите игрока' : '1. Игрок: ${selected.fullName}',
               style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
@@ -228,7 +418,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
             for (final p in players)
               ChoiceChip(
                 avatar: CircleAvatar(
-                  backgroundColor: (stats[p.id]?.minutes ?? 0) > 0 ? AppColors.red : AppColors.outline,
+                  backgroundColor: onFieldNow(stats[p.id], m.durationMin) ? AppColors.red : AppColors.outline,
                   child: Text(p.number?.toString() ?? '', style: const TextStyle(fontSize: 11, color: Colors.white)),
                 ),
                 label: Text(_short(p)),
@@ -258,7 +448,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                       borderRadius: BorderRadius.circular(14),
                       onTap: selected == null
                           ? () => showInfo(context, 'Сначала выберите игрока')
-                          : () => _record(m, selected, stats[selected.id], e, ourGoals),
+                          : () => _act(m, selected, e, stats, onField, ourGoals),
                       child: Opacity(
                         opacity: selected == null ? 0.45 : 1,
                         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -294,5 +484,68 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
         ]),
       );
     });
+  }
+}
+
+class _LiveCard extends StatelessWidget {
+  const _LiveCard({required this.icon, required this.title, required this.text, required this.child});
+
+  final IconData icon;
+  final String title, text;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.outline),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(icon, color: AppColors.red),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
+          ]),
+          const SizedBox(height: 4),
+          Text(text, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          const SizedBox(height: 8),
+          child,
+        ]),
+      );
+}
+
+/// Подсказка замены: кто уходит и почему, кто выходит и что это даёт.
+class _SubTile extends StatelessWidget {
+  const _SubTile({required this.advice, required this.onApply});
+
+  final SubAdvice advice;
+  final VoidCallback? onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = advice;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.arrow_downward, color: AppColors.red, size: 18),
+          Flexible(child: Text(' ${shortName(a.out)}', style: const TextStyle(fontWeight: FontWeight.w700))),
+          if (a.into != null) ...[
+            const SizedBox(width: 10),
+            const Icon(Icons.arrow_upward, color: AppColors.good, size: 18),
+            Flexible(child: Text(' ${shortName(a.into!)}', style: const TextStyle(fontWeight: FontWeight.w700))),
+          ],
+          const Spacer(),
+          if (onApply != null) FilledButton.tonal(onPressed: onApply, child: const Text('Заменить')),
+        ]),
+        const SizedBox(height: 4),
+        for (final w in a.why) Text('• $w', style: const TextStyle(fontSize: 13)),
+        Text(a.plan, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+      ]),
+    );
   }
 }
