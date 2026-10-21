@@ -169,15 +169,37 @@ Future<void> seedTeamHistory(
     ),
   );
 
-  // Проведённые тренировки за 10 недель (пн и ср) с посещаемостью и нагрузкой.
-  const blocksTemplate = [
-    ('warmup', 'Разминка с мячом', 15, 'warmup'),
-    ('main', 'Рондо 5×2', 20, 'possession'),
-    ('main', 'Завершение атаки 2×1', 25, 'finishing'),
-    ('game', 'Игра 8×8 на 4 ворот', 25, 'game'),
-    ('main', 'Скоростно-силовая работа', 15, 'physical'),
-    ('cooldown', 'Заминка и растяжка', 10, 'cooldown'),
+  // Тренировки из настоящих упражнений библиотеки: у каждого блока — схема, описание и как выполнять.
+  final age = adult ? 18 : AgeGroups.age(team.ageGroup);
+  final library = [
+    for (final d in await repo.list(Entities.drills, Drill.fromJson))
+      if (d.source == 'system' && d.ageMin <= age && d.ageMax >= age) d,
+  ]..sort((x, y) => x.title.compareTo(y.title));
+  const themes = [
+    ('Владение и завершение', 'Удержание мяча под давлением и удары после комбинации',
+        [('warmup', 'warmup', 15), ('main', 'possession', 20), ('main', 'finishing', 25), ('game', 'game', 25), ('cooldown', 'cooldown', 10)]),
+    ('Переходы и прессинг', 'Быстрый переход в атаку после отбора и прессинг после потери',
+        [('warmup', 'warmup', 15), ('main', 'transition', 20), ('main', 'defending', 20), ('game', 'game', 25), ('main', 'physical', 15), ('cooldown', 'cooldown', 10)]),
+    ('Техника и обыгрыш', 'Первое касание, ведение и обыгрыш один в один',
+        [('warmup', 'warmup', 15), ('main', 'technique', 20), ('main', 'dribbling', 20), ('main', 'passing', 15), ('game', 'game', 25), ('cooldown', 'cooldown', 10)]),
+    ('Атака через фланги', 'Розыгрыш на флангах, навесы и завершение',
+        [('warmup', 'warmup', 15), ('main', 'passing', 20), ('main', 'tactics', 20), ('main', 'finishing', 20), ('game', 'game', 25), ('cooldown', 'cooldown', 10)]),
   ];
+  List<TrainingBlock> blocksFor(int n) {
+    final theme = themes[n % themes.length];
+    return [
+      for (final (i, (phase, cat, min)) in theme.$3.indexed)
+        () {
+          final options = library.where((d) => d.category == cat).toList();
+          final d = options.isEmpty ? null : options[(n + i) % options.length];
+          return d == null
+              ? TrainingBlock(id: newId(), phase: phase, title: Phases.all[phase] ?? cat, durationMin: min, drill: {'category': cat, 'title': cat})
+              : TrainingBlock(id: newId(), phase: phase, title: d.title, durationMin: min, drillId: d.id, drill: d.toJson());
+        }(),
+    ];
+  }
+
+  // Проведённые тренировки за 10 недель (пн и ср) с посещаемостью и нагрузкой.
   var monday = day.subtract(Duration(days: day.weekday - 1 + 7 * 10));
   var k = 0;
   while (monday.isBefore(day)) {
@@ -185,27 +207,19 @@ Future<void> seedTeamHistory(
       final at = monday.add(Duration(days: offset, hours: startHour));
       if (!at.isBefore(day)) continue;
       k++;
+      final blocks = blocksFor(k);
       final s = TrainingSession(
         id: newId(),
         teamId: team.id,
-        title: k.isEven ? 'Владение и завершение' : 'Переходы и прессинг',
-        goal: k.isEven ? 'Удержание мяча и удары' : 'Быстрый переход в атаку',
-        durationMin: 110,
-        playersExpected: 16,
+        title: themes[k % themes.length].$1,
+        goal: themes[k % themes.length].$2,
+        durationMin: blocks.fold(0, (a, b) => a + b.durationMin),
+        playersExpected: players.length,
         status: 'done',
         scheduledAt: at,
         startedAt: at,
-        finishedAt: at.add(const Duration(minutes: 110)),
-        blocks: [
-          for (final (phase, title, min, cat) in blocksTemplate)
-            TrainingBlock(
-              id: newId(),
-              phase: phase,
-              title: title,
-              durationMin: min,
-              drill: {'category': cat, 'title': title},
-            ),
-        ],
+        finishedAt: at.add(Duration(minutes: blocks.fold(0, (a, b) => a + b.durationMin))),
+        blocks: blocks,
       );
       await repo.put(Entities.sessions, s);
       for (final p in players) {
@@ -231,6 +245,35 @@ Future<void> seedTeamHistory(
       );
     }
     monday = monday.add(const Duration(days: 7));
+  }
+
+  // Две ближайшие тренировки уже спланированы: можно открыть план, посмотреть упражнения и провести.
+  for (var n = 1; n <= 2; n++) {
+    var d = day.add(Duration(days: n));
+    while (d.weekday != 1 && d.weekday != 3 && d.weekday != 5) {
+      d = d.add(const Duration(days: 1));
+    }
+    if (n == 2) {
+      d = d.add(const Duration(days: 1));
+      while (d.weekday != 1 && d.weekday != 3 && d.weekday != 5) {
+        d = d.add(const Duration(days: 1));
+      }
+    }
+    final blocks = blocksFor(k + n);
+    await repo.put(
+      Entities.sessions,
+      TrainingSession(
+        id: newId(),
+        teamId: team.id,
+        title: themes[(k + n) % themes.length].$1,
+        goal: themes[(k + n) % themes.length].$2,
+        durationMin: blocks.fold(0, (a, b) => a + b.durationMin),
+        playersExpected: players.length,
+        status: 'planned',
+        scheduledAt: d.add(Duration(hours: startHour)),
+        blocks: blocks,
+      ),
+    );
   }
 
   // Игровой стиль каждого игрока — чтобы профили отличались: кто-то дриблёр, кто-то диспетчер или «мотор».

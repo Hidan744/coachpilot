@@ -8,8 +8,10 @@ import '../../../core/export/excel_report.dart';
 import '../../../core/export/save_file.dart';
 import '../../../core/performance.dart';
 import '../../../core/providers.dart';
+import '../../../core/recommendations.dart';
 import '../../../data/models.dart';
 import '../../theme.dart';
+import '../../widgets/advice_card.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
 import '../../widgets/motion.dart';
@@ -202,7 +204,53 @@ class TeamDashboard extends ConsumerWidget {
       ),
     ];
 
+    // Рекомендации: интенсивность команды и игроки, которым нужно внимание.
+    final allStats = (ref.watch(matchStatsProvider).value ?? const <MatchStat>[]).where((x) => matchIds.contains(x.matchId)).toList();
+    final assessments = ref.watch(allAssessmentsProvider).value ?? const <PlayerAssessment>[];
+    final adult = team.ageGroup == 'adult';
+    final playerTips = <Advice>[];
+    for (final p in players) {
+      final snap = PlayerSnapshot(
+        player: p,
+        assessments: assessments,
+        tests: tests,
+        attendance: attendance,
+        sessions: byId,
+        stats: allStats,
+        now: now,
+      );
+      for (final t in playerAdvice(snap, adult: adult, team: season.values)) {
+        playerTips.add(Advice(t.kind, '${p.fullName} · ${t.title}', t.text, area: t.area, playerId: p.id));
+      }
+    }
+    // Разные направления по очереди (ОФП, техника, тактика, посещаемость) и разные игроки.
+    final picked = <Advice>[];
+    final byArea = <String, List<Advice>>{};
+    for (final t in playerTips) {
+      byArea.putIfAbsent(t.area, () => []).add(t);
+    }
+    while (picked.length < 4 && byArea.values.any((l) => l.isNotEmpty)) {
+      for (final l in byArea.values) {
+        final next = l.where((t) => !picked.any((x) => x.playerId == t.playerId)).firstOrNull;
+        if (next != null && picked.length < 4) picked.add(next);
+        if (next != null) {
+          l.remove(next);
+        } else {
+          l.clear();
+        }
+      }
+    }
+    final advice = [
+      ...teamAdvice(team: team, sessions: sessions, reports: reports, matches: matches, now: now),
+      ...picked,
+    ];
+
     final cards = <Widget>[
+      AdviceCard(
+        title: 'Рекомендации тренеру',
+        items: advice,
+        onTap: (a) => context.push('/team/player/${a.playerId}'),
+      ),
       _AttendanceCard(attendance: attendance, sessions: byId, now: now),
       if (physTrend.any((v) => v != null))
         DashCard(

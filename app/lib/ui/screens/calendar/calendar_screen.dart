@@ -26,10 +26,24 @@ const _teamPalette = [
   Color(0xFFF06292),
 ];
 
-/// Цвет команды в календаре — по порядку команд, чтобы у каждой был свой.
+/// Цвет команды в календаре: взрослые — красные оттенки, юношеские — синий и другие, у каждой свой.
 Color teamColor(String? teamId, List<Team> teams) {
-  final i = teams.indexWhere((t) => t.id == teamId);
-  return i < 0 ? AppColors.textMuted : _teamPalette[i % _teamPalette.length];
+  final t = teams.where((x) => x.id == teamId).firstOrNull;
+  if (t == null) return AppColors.textMuted;
+  const adultColors = [AppColors.red, Color(0xFFFF8A65), Color(0xFFF06292)];
+  if (t.ageGroup == 'adult') {
+    final i = teams.where((x) => x.ageGroup == 'adult').toList().indexOf(t);
+    return adultColors[i % adultColors.length];
+  }
+  final i = teams.where((x) => x.ageGroup != 'adult').toList().indexOf(t);
+  return _teamPalette[i % _teamPalette.length];
+}
+
+/// Значок события: матч — мяч; тренировка взрослых — гантель, юношеская — бегущий игрок.
+IconData eventIcon(CalendarEvent e, List<Team> teams) {
+  if (e.kind == CalendarKind.match) return Icons.sports_soccer;
+  final adult = teams.where((t) => t.id == e.teamId).firstOrNull?.ageGroup == 'adult';
+  return adult ? Icons.fitness_center : Icons.directions_run;
 }
 
 String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
@@ -280,7 +294,7 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
           crossAxisCount: 7,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 0.9,
+          childAspectRatio: 0.78,
           children: [
             for (final d in grid)
               _DayCell(
@@ -297,6 +311,19 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
               ),
           ],
         ),
+      ),
+      // Легенда: что значит каждый значок и цвет.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Wrap(spacing: 14, runSpacing: 6, children: [
+          _Legend(icon: Icons.sports_soccer, color: AppColors.textMuted, label: 'Матч'),
+          for (final tm in teams)
+            _Legend(
+              icon: tm.ageGroup == 'adult' ? Icons.fitness_center : Icons.directions_run,
+              color: teamColor(tm.id, teams),
+              label: tm.name,
+            ),
+        ]),
       ),
       const Divider(height: 1),
       SectionTitle(_cap(DateFormat('d MMMM, EEEE', 'ru').format(widget.day))),
@@ -319,6 +346,21 @@ class _CalendarViewState extends ConsumerState<CalendarView> {
       Expanded(child: list),
     ]);
   }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend({required this.icon, required this.color, required this.label});
+
+  final IconData icon;
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 5),
+        Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+      ]);
 }
 
 /// Главные действия календаря — сразу на экране, без меню.
@@ -423,19 +465,21 @@ class _DayCell extends StatelessWidget {
                 color: inMonth ? (hasMatch ? AppColors.red : AppColors.text) : AppColors.outline,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
+            // Крупные значки: матч — мяч в кружке, тренировки — значок команды её цветом.
             Wrap(spacing: 2, runSpacing: 2, alignment: WrapAlignment.center, children: [
-              for (final e in events.take(4))
+              for (final e in events.take(3))
                 e.kind == CalendarKind.match
-                    ? const Icon(Icons.sports_soccer, size: 9, color: AppColors.red)
-                    : Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: e.kind == CalendarKind.slot ? null : teamColor(e.teamId, teams),
-                          border: Border.all(color: teamColor(e.teamId, teams), width: 1.4),
-                        ),
+                    ? Container(
+                        padding: const EdgeInsets.all(1.5),
+                        decoration: BoxDecoration(color: teamColor(e.teamId, teams), shape: BoxShape.circle),
+                        child: const Icon(Icons.sports_soccer, size: 13, color: Colors.white),
+                      )
+                    : Icon(
+                        eventIcon(e, teams),
+                        size: 15,
+                        // Запланированное по расписанию — бледнее, проведённое и спланированное — ярко.
+                        color: teamColor(e.teamId, teams).withValues(alpha: e.kind == CalendarKind.slot ? 0.55 : 1),
                       ),
             ]),
           ]),
@@ -457,12 +501,12 @@ class EventCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final team = teams.where((x) => x.id == e.teamId).firstOrNull;
-    final color = e.kind == CalendarKind.match ? AppColors.red : teamColor(e.teamId, teams);
+    final color = teamColor(e.teamId, teams);
     final when = '${showDate ? '${DateFormat('d MMM, EE', 'ru').format(e.start)} · ' : ''}${hm(e.start)}–${hm(e.end)}';
     final (icon, kindLabel) = switch (e.kind) {
       CalendarKind.match => (Icons.sports_soccer, 'Матч'),
-      CalendarKind.training => (Icons.event_note, SessionStatus.labels[e.session!.status] ?? ''),
-      CalendarKind.slot => (Icons.repeat, 'По расписанию'),
+      CalendarKind.training => (eventIcon(e, teams), SessionStatus.labels[e.session!.status] ?? ''),
+      CalendarKind.slot => (eventIcon(e, teams), 'По расписанию'),
     };
     final m = e.match;
     final subtitle = [

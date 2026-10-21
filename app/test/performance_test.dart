@@ -5,6 +5,7 @@ import 'package:coachpilot/core/export/excel_report.dart';
 import 'package:coachpilot/core/export/file_name.dart';
 import 'package:coachpilot/core/file_import.dart';
 import 'package:coachpilot/core/performance.dart';
+import 'package:coachpilot/core/recommendations.dart';
 import 'package:coachpilot/core/stats_import.dart';
 import 'package:coachpilot/data/db.dart';
 import 'package:coachpilot/data/models.dart';
@@ -288,5 +289,29 @@ void main() {
     expect(r.stats['distance'], 9.4);
     expect(r.stats['top_speed'], 29.5);
     expect(r.stats['recoveries'], 6);
+  });
+
+  test('рекомендации: интенсивность по нагрузке и подводка к матчу', () {
+    final now = DateTime(2026, 10, 21, 12);
+    final team = Team(id: 't', name: 'Основа', ageGroup: 'adult', level: 'pro', defaultPlayers: 20);
+    TrainingSession s(int daysAgo) => TrainingSession(
+          id: 's$daysAgo',
+          teamId: 't',
+          title: 'x',
+          durationMin: 90,
+          status: 'done',
+          startedAt: now.subtract(Duration(days: daysAgo)),
+        );
+    // Последняя неделя — 3 занятия с RPE 9, месяц до неё — по 1 занятию в неделю с RPE 5.
+    final sessions = [s(1), s(3), s(5), s(9), s(16), s(23), s(30)];
+    final reports = {
+      for (final x in sessions)
+        x.id: SessionReport(id: 'r${x.id}', sessionId: x.id, rpe: int.parse(x.id.substring(1)) < 7 ? 9 : 5),
+    };
+    final match = Match(id: 'm', teamId: 't', opponent: 'Урал', startsAt: now.add(const Duration(days: 1)));
+    final advice = teamAdvice(team: team, sessions: sessions, reports: reports, matches: [match], now: now);
+    expect(advice.map((a) => a.title), containsAll(['Снизить интенсивность', 'Игроки устали', 'Подводка к матчу']));
+    // Взрослой команде нет детских ограничений.
+    expect(advice.where((a) => a.title.startsWith('Возраст')), isEmpty);
   });
 }

@@ -31,7 +31,9 @@ try {
   await tap(page, 'Игровая часть');
   await see(page, 'Как выполнять');
   await fill(page, 'Заметка / адаптация к группе', 'Двое вратарей по очереди');
+  // Панель блока закрывается с анимацией — ждём, прежде чем сохранять сам план.
   await tap(page, 'Сохранить', { exact: true });
+  await page.waitForTimeout(900);
   await tap(page, 'Сохранить', { exact: true });
   await see(page, 'Провести');
   await shot(page, 's5-03-plan-saved');

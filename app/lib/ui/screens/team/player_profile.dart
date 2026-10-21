@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/performance.dart';
+import '../../../core/recommendations.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../theme.dart';
+import '../../widgets/advice_card.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
 import '../calendar/calendar_screen.dart';
@@ -229,6 +231,47 @@ class _OverviewTab extends ConsumerWidget {
       if (s.season.games == 0 && s.tests.isEmpty && s.weeks.every((w) => w.$2 == null))
         if ((ref.watch(teamsProvider).value ?? const <Team>[]).where((t) => t.id == p.teamId).firstOrNull case final team?)
           DemoFillCard(team: team),
+      // Рекомендации по данным игрока: ОФП, техника, тактика, посещаемость.
+      () {
+        final teamIds = {for (final x in ref.watch(playersProvider(p.teamId)).value ?? const <Player>[]) if (x.position != 'GK') x.id};
+        final squad = seasonStats((ref.watch(matchStatsProvider).value ?? const <MatchStat>[]).where((x) => teamIds.contains(x.playerId)));
+        final tips = playerAdvice(s, adult: ref.watch(adultPlayerProvider(p.id)), team: squad.values);
+        if (tips.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: AdviceCard(
+            title: 'Над чем работать',
+            items: tips,
+            footer: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.flag_outlined),
+                label: const Text('Сделать программой на 4 недели'),
+                onPressed: () async {
+                  final start = DateTime.now();
+                  await ref.read(repoProvider).put(
+                        Entities.devPlans,
+                        DevelopmentPlan(
+                          id: newId(),
+                          playerId: p.id,
+                          period: 'cycle4',
+                          title: tips.first.title,
+                          startsOn: DateTime(start.year, start.month, start.day),
+                          endsOn: DateTime(start.year, start.month, start.day + 27),
+                          keyGoal: tips.first.title,
+                          items: [for (final t in tips) PlanItem(text: '${t.title}: ${t.text}', kind: 'task')],
+                          comment: 'Составлено по рекомендациям: тесты ОФП, статистика матчей, оценки и посещаемость.',
+                        ),
+                      );
+                  if (context.mounted) {
+                    showInfo(context, 'Программа на 4 недели добавлена во вкладку «Развитие»');
+                  }
+                },
+              ),
+            ),
+          ),
+        );
+      }(),
       // Плитки фиксированной высоты: на планшете — 4 в ряд.
       GridView(
         shrinkWrap: true,

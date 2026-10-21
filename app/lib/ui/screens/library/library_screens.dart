@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../../data/repo.dart';
+import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/scheme_view.dart';
 import 'import_drills_screen.dart';
@@ -26,20 +27,34 @@ final drillProvider = Provider.family<Drill?, String>(
 );
 
 class DrillFilter {
-  const DrillFilter({this.query = '', this.category, this.tab = 'all', this.fitTeam = false});
+  const DrillFilter({this.query = '', this.category, this.tab = 'all', this.fitTeam = false, this.audience});
 
   final String query;
   final String? category;
   final String tab; // all | favorites | mine
   final bool fitTeam;
 
-  DrillFilter copyWith({String? query, String? Function()? category, String? tab, bool? fitTeam}) => DrillFilter(
+  /// Раздел: kids — детско-юношеский футбол, adults — взрослые; null — по выбранной команде.
+  final String? audience;
+
+  DrillFilter copyWith({String? query, String? Function()? category, String? tab, bool? fitTeam, String? audience}) => DrillFilter(
         query: query ?? this.query,
         category: category == null ? this.category : category(),
         tab: tab ?? this.tab,
         fitTeam: fitTeam ?? this.fitTeam,
+        audience: audience ?? this.audience,
       );
 }
+
+/// Раздел библиотеки: выбранный вручную или по команде (взрослая команда → «Взрослые»).
+final audienceProvider = Provider<String>((ref) {
+  final chosen = ref.watch(drillFilterProvider).audience;
+  if (chosen != null) return chosen;
+  return ref.watch(currentTeamProvider)?.ageGroup == 'adult' ? 'adults' : 'kids';
+});
+
+/// Подходит ли упражнение разделу: детям — с подходящим возрастом, взрослым — без верхней границы.
+bool drillForAudience(Drill d, String audience) => audience == 'adults' ? d.ageMax >= 18 : d.ageMin < 18;
 
 class DrillFilterController extends Notifier<DrillFilter> {
   @override
@@ -60,9 +75,10 @@ bool drillFitsTeam(Drill d, Team t, {int? players}) {
       d.equipment.every((e) => t.equipment.contains(e) || e == 'balls' || e == 'cones');
 }
 
-List<Drill> applyFilter(List<Drill> all, DrillFilter f, Set<String> favs, Team? team) {
+List<Drill> applyFilter(List<Drill> all, DrillFilter f, Set<String> favs, Team? team, {String? audience}) {
   final q = f.query.trim().toLowerCase();
   return all.where((d) {
+    if (audience != null && !drillForAudience(d, audience)) return false;
     if (f.tab == 'favorites' && !favs.contains(d.id)) return false;
     if (f.tab == 'mine' && d.isSystem) return false;
     if (f.category != null && d.category != f.category) return false;
@@ -75,11 +91,39 @@ List<Drill> applyFilter(List<Drill> all, DrillFilter f, Set<String> favs, Team? 
   }).toList();
 }
 
-String drillMeta(Drill d) => [
+/// Кратко об упражнении; для взрослых — без возраста.
+String drillMeta(Drill d, {bool adults = false}) => [
       '${d.durationMin} мин',
       d.playersMax >= 30 ? 'от ${d.playersMin} игр.' : '${d.playersMin}–${d.playersMax} игр.',
-      d.ageMax >= 99 ? 'от ${d.ageMin} лет' : '${d.ageMin}–${d.ageMax} лет',
+      if (!adults) d.ageMax >= 99 ? 'от ${d.ageMin} лет' : '${d.ageMin}–${d.ageMax} лет',
     ].join(' · ');
+
+const _intensityLabel = {'low': 'низкая', 'medium': 'средняя', 'high': 'высокая'};
+
+/// Рекомендации для детей по возрастам: сколько минут, с какой интенсивностью и как дозировать.
+List<(String, String, String, String)> kidsDosage(Drill d) {
+  final hi = d.intensity == 'high';
+  final rows = <(String, String, String, String)>[];
+  void add(int from, int to, String age, double timeK, String intensity, String how) {
+    if (d.ageMin > to || d.ageMax < from) return;
+    rows.add((age, '${(d.durationMin * timeK).round().clamp(5, 60)} мин', intensity, how));
+  }
+
+  add(6, 8, '6–8 лет', 0.6, hi ? 'средняя' : _intensityLabel[d.intensity]!, 'Игровая форма, отрезки по 2–3 мин с паузой, много касаний мяча');
+  add(9, 11, '9–11 лет', 0.8, hi ? 'средняя → высокая' : _intensityLabel[d.intensity]!,
+      'Серии по 3–4 мин, пауза 1 мин; акцент на технику и решения');
+  add(12, 14, '12–14 лет', 1, _intensityLabel[d.intensity]!,
+      hi ? 'Работа : отдых 1 : 1, следить за усталостью в период роста' : 'Полный объём, усложнять правила');
+  add(15, 17, '15–17 лет', 1, _intensityLabel[d.intensity]!, hi ? 'Работа : отдых 2 : 1, как у взрослых' : 'Полный объём с соревновательным элементом');
+  return rows;
+}
+
+/// Рекомендации для взрослых: интенсивность и как дозировать.
+String adultsDosage(Drill d) => switch (d.intensity) {
+      'high' => 'Высокая интенсивность: ${d.durationMin} мин, серии 3–4 мин, отдых 1–2 мин. Не ставить за день до игры.',
+      'low' => 'Низкая интенсивность: ${d.durationMin} мин. Подходит для восстановления и дня перед игрой.',
+      _ => 'Средняя интенсивность: ${d.durationMin} мин, серии 4–6 мин, отдых 1 мин.',
+    };
 
 const categoryIcons = {
   'warmup': Icons.directions_run,
@@ -110,6 +154,7 @@ class LibraryScreen extends ConsumerWidget {
     final favs = ref.watch(favoritesProvider).value ?? const {};
     final team = ref.watch(currentTeamProvider);
     final drills = ref.watch(drillsProvider);
+    final audience = ref.watch(audienceProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -141,6 +186,18 @@ class LibraryScreen extends ConsumerWidget {
               hintText: 'рондо, удар, 1×1…',
             ),
             onChanged: (v) => ctrl.update((s) => s.copyWith(query: v)),
+          ),
+        ),
+        // Разделы библиотеки: детский и взрослый футбол.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'kids', icon: Icon(Icons.child_care), label: Text('Дети и юноши')),
+              ButtonSegment(value: 'adults', icon: Icon(Icons.person), label: Text('Взрослые')),
+            ],
+            selected: {audience},
+            onSelectionChanged: (s) => ctrl.update((x) => x.copyWith(audience: s.first)),
           ),
         ),
         Padding(
@@ -185,7 +242,7 @@ class LibraryScreen extends ConsumerWidget {
         ),
         Expanded(
           child: AsyncView(drills, builder: (all) {
-            final list = applyFilter(all, f, favs, team);
+            final list = applyFilter(all, f, favs, team, audience: audience);
             if (list.isEmpty) {
               return EmptyState(
                 icon: Icons.search_off,
@@ -216,7 +273,7 @@ class LibraryScreen extends ConsumerWidget {
                 return ListTile(
                   leading: CircleAvatar(child: Icon(categoryIcons[d.category] ?? Icons.sports_soccer)),
                   title: Text(d.title),
-                  subtitle: Text('${DrillCategories.all[d.category]} · ${drillMeta(d)}'),
+                  subtitle: Text('${DrillCategories.all[d.category]} · ${drillMeta(d, adults: audience == 'adults')}'),
                   trailing: favs.contains(d.id) ? const Icon(Icons.star, color: Colors.amber) : null,
                   onTap: () async {
                     if (pickMode) {
@@ -238,15 +295,34 @@ class LibraryScreen extends ConsumerWidget {
 // ---------------------------------------------------------------- карточка упражнения
 
 /// Содержимое карточки упражнения — используется и в библиотеке, и в плане, и в режиме занятия.
-class DrillDetails extends StatelessWidget {
+/// Упражнение в нижней панели: схема с анимацией и описание.
+Future<void> showDrillSheet(BuildContext context, Drill drill) => showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (c) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        builder: (c, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [
+          Text(drill.title, style: Theme.of(c).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          DrillDetails(drill),
+        ]),
+      ),
+    );
+
+class DrillDetails extends ConsumerWidget {
   const DrillDetails(this.drill, {super.key, this.compact = false});
 
   final Drill drill;
   final bool compact;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
+    final adults = ref.watch(audienceProvider) == 'adults';
+    final dosage = adults ? const <(String, String, String, String)>[] : kidsDosage(drill);
     Widget section(String title, List<String> items, {bool numbered = false}) {
       if (items.isEmpty) return const SizedBox.shrink();
       return Padding(
@@ -273,7 +349,7 @@ class DrillDetails extends StatelessWidget {
       ],
       Wrap(spacing: 8, runSpacing: 8, children: [
         Chip(label: Text(DrillCategories.all[drill.category] ?? drill.category)),
-        Chip(label: Text(drillMeta(drill))),
+        Chip(label: Text(drillMeta(drill, adults: adults))),
         if (drill.fieldSize.isNotEmpty) Chip(label: Text(drill.fieldSize)),
         Chip(label: Text(switch (drill.intensity) { 'low' => 'Низкая интенсивность', 'high' => 'Высокая интенсивность', _ => 'Средняя интенсивность' })),
         if (drill.source == 'ai') const Chip(avatar: Icon(Icons.auto_awesome, size: 16), label: Text('Создано AI — проверьте')),
@@ -282,6 +358,28 @@ class DrillDetails extends StatelessWidget {
         const SizedBox(height: 12),
         Text(drill.goal, style: t.textTheme.bodyLarge?.copyWith(fontStyle: FontStyle.italic)),
       ],
+      // Дозировка: детям — по возрастам, взрослым — интенсивность и паузы.
+      if (adults)
+        section('Рекомендации для взрослых', [adultsDosage(drill)])
+      else if (dosage.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Рекомендации по возрасту', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            for (final (age, time, intensity, how) in dosage)
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: AppColors.surfaceHigh, borderRadius: BorderRadius.circular(12)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('$age · $time · интенсивность: $intensity', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(how, style: const TextStyle(color: AppColors.textMuted)),
+                ]),
+              ),
+          ]),
+        ),
       if (drill.equipment.isNotEmpty)
         section('Инвентарь', [drill.equipment.map((e) => Equipment.all[e] ?? e).join(', ')]),
       if (drill.setup.isNotEmpty) section('Организация', [drill.setup]),

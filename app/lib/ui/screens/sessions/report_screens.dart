@@ -9,6 +9,7 @@ import '../../../data/models.dart';
 import '../../../data/repo.dart';
 import '../../../sync/api_client.dart';
 import '../../widgets/common.dart';
+import '../library/library_screens.dart';
 import 'sessions_screens.dart';
 
 final notesProvider = StreamProvider.family<List<SessionNote>, String>(
@@ -313,6 +314,10 @@ class SessionSummaryScreen extends ConsumerWidget {
           for (final b in s.blocks)
             ListTile(
               dense: true,
+              // Нажатие — упражнение целиком: схема, как выполнять, на что обратить внимание.
+              onTap: b.drillSnapshot == null || b.drillSnapshot!.steps.isEmpty && b.drillSnapshot!.scheme == null
+                  ? null
+                  : () => showDrillSheet(context, b.drillSnapshot!),
               leading: Icon(
                 skipped.contains(b.id) ? Icons.remove_circle_outline : Icons.check_circle_outline,
                 color: skipped.contains(b.id) ? t.disabledColor : phaseColors[b.phase],
