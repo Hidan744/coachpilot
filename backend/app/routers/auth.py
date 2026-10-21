@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_db
 from app.models import RefreshToken, Subscription, User
-from app.ratelimit import login_email_limiter, login_ip_limiter
+from app.ratelimit import login_email_limiter, login_ip_limiter, register_ip_limiter
 from app.schemas import LoginIn, RefreshIn, RegisterIn, TokensOut
 from app.security import (
     create_access_token,
@@ -29,7 +29,9 @@ async def _issue_tokens(db: AsyncSession, user: User) -> TokensOut:
 
 
 @router.post("/register", response_model=TokensOut, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> TokensOut:
+async def register(body: RegisterIn, request: Request, db: AsyncSession = Depends(get_db)) -> TokensOut:
+    if not register_ip_limiter.hit(request.client.host if request.client else "-"):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много регистраций. Попробуйте через час.")
     email = body.email.lower()
     if await db.scalar(select(User.id).where(func.lower(User.email) == email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким email уже существует")

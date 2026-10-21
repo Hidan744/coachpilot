@@ -42,3 +42,5 @@ class RateLimiter:
 login_ip_limiter = RateLimiter(limit=20, window_sec=900)
 # На один email — 10 попыток в минуту с любых адресов: чужой человек не заблокирует тренера надолго.
 login_email_limiter = RateLimiter(limit=10, window_sec=60)
+# Регистрации с одного адреса — не больше 10 в час: нельзя перебором проверять, какие email заняты.
+register_ip_limiter = RateLimiter(limit=10, window_sec=3600)

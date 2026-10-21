@@ -46,7 +46,8 @@ async def make_user(client, email="coach@example.com", password="secret123", nam
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limits():
-    from app.ratelimit import login_email_limiter, login_ip_limiter
+    from app.ratelimit import login_email_limiter, login_ip_limiter, register_ip_limiter
 
     login_ip_limiter.clear()
     login_email_limiter.clear()
+    register_ip_limiter.clear()

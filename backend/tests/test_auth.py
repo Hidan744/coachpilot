@@ -100,3 +100,10 @@ async def test_login_email_limit_is_short_and_does_not_lock_owner_for_long(clien
     codes = [await _login_from(f"10.1.0.{i}", "coach2@example.com") for i in range(11)]
     assert codes[:10] == [401] * 10 and codes[10] == 429
     assert rl.login_email_limiter.window <= 60
+
+
+async def test_register_limited_by_ip(client):
+    body = {"password": "secret123", "name": "Иван", "consent_personal_data": True}
+    codes = [(await client.post("/auth/register", json=body | {"email": f"r{i}@example.com"})).status_code
+             for i in range(11)]
+    assert codes[:10] == [201] * 10 and codes[10] == 429
