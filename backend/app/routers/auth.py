@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.db import get_db
 from app.models import RefreshToken, Subscription, User
-from app.ratelimit import login_limiter
+from app.ratelimit import login_email_limiter, login_ip_limiter
 from app.schemas import LoginIn, RefreshIn, RegisterIn, TokensOut
 from app.security import (
     create_access_token,
@@ -47,13 +47,15 @@ async def register(body: RegisterIn, db: AsyncSession = Depends(get_db)) -> Toke
 
 @router.post("/login", response_model=TokensOut)
 async def login(body: LoginIn, request: Request, db: AsyncSession = Depends(get_db)) -> TokensOut:
-    key = f"{request.client.host if request.client else '-'}:{body.email.lower()}"
-    if not login_limiter.hit(key):
-        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много попыток входа. Подождите 5 минут.")
+    email = body.email.lower()
+    if not login_ip_limiter.hit(request.client.host if request.client else "-"):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много попыток входа. Подождите 15 минут.")
+    if not login_email_limiter.hit(email):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Слишком много попыток входа. Подождите минуту.")
     user = await db.scalar(select(User).where(func.lower(User.email) == body.email.lower()))
     if not verify_password(user.password_hash if user else None, body.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")
-    login_limiter.reset(key)
+    login_email_limiter.reset(email)
     return await _issue_tokens(db, user)
 
 

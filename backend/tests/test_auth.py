@@ -66,3 +66,37 @@ async def test_update_profile(client):
     r = await client.patch("/me", headers=headers, json={"city": "Казань", "coaching_level": "UEFA C"})
     assert r.status_code == 200
     assert r.json()["city"] == "Казань"
+
+
+def test_rate_limiter_overflow_keeps_active_keys():
+    from app.ratelimit import RateLimiter
+
+    rl = RateLimiter(limit=2, window_sec=60, max_keys=3)
+    assert rl.hit("victim") and rl.hit("victim")
+    for i in range(10):  # атакующий заваливает словарь новыми ключами
+        rl.hit(f"junk{i}")
+    assert not rl.hit("victim")  # счётчик жертвы не сброшен
+
+
+async def _login_from(ip: str, email: str):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    async with AsyncClient(transport=ASGITransport(app=app, client=(ip, 1234)), base_url="http://test") as c:
+        return (await c.post("/auth/login", json={"email": email, "password": "wrong-pass"})).status_code
+
+
+async def test_login_limited_by_ip_across_emails(client):
+    codes = [await _login_from("10.0.0.1", f"u{i}@example.com") for i in range(21)]
+    assert codes[:20] == [401] * 20 and codes[20] == 429
+    assert await _login_from("10.0.0.2", "u0@example.com") == 401  # другой адрес не заблокирован
+
+
+async def test_login_email_limit_is_short_and_does_not_lock_owner_for_long(client):
+    import app.ratelimit as rl
+
+    await make_user(client, email="coach2@example.com")
+    codes = [await _login_from(f"10.1.0.{i}", "coach2@example.com") for i in range(11)]
+    assert codes[:10] == [401] * 10 and codes[10] == 429
+    assert rl.login_email_limiter.window <= 60

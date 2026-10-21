@@ -36,7 +36,7 @@ pytest -q            # нужна БД coachpilot_test, адрес — в CP_DAT
 `ai_used == ai_quota_month` → `/ai/report` и `/ai/drills/parse` возвращают `source == "ai"`,
 а `ai_used` после вызова равен 1.
 
-### [ ] 2. Блокировка входа чужого аккаунта (лимит попыток считается только по email)
+### [x] 2. Блокировка входа чужого аккаунта (лимит попыток считается только по email)
 
 **Проблема.** API запускается с `uvicorn --proxy-headers` (`backend/Dockerfile`), но uvicorn
 доверяет заголовкам `X-Forwarded-For` только от `127.0.0.1`. Caddy работает в отдельном

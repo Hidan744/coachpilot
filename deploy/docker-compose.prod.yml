@@ -23,6 +23,9 @@ services:
       CP_DATABASE_URL: postgresql+asyncpg://coachpilot:${DB_PASSWORD}@db:5432/coachpilot
       # Ссылки для родителей ведут на https-адрес API (за Caddy запрос приходит по http).
       CP_PUBLIC_BASE_URL: https://${DOMAIN}
+      # Доверять X-Forwarded-For только от Caddy (сеть compose ниже), иначе лимиты входа
+      # видят вместо адреса клиента адрес Caddy.
+      FORWARDED_ALLOW_IPS: 172.30.0.0/24
     depends_on:
       db: {condition: service_healthy}
 
@@ -50,6 +53,12 @@ services:
         sleep 86400; done'
     depends_on:
       db: {condition: service_healthy}
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
 
 volumes:
   pgdata:

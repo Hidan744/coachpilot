@@ -18,7 +18,7 @@ async def test_events_ingest(client):
 
 async def test_login_rate_limited(client):
     await make_user(client)
-    for _ in range(8):
+    for _ in range(10):
         r = await client.post("/auth/login", json={"email": "coach@example.com", "password": "wrong-pass"})
         assert r.status_code == 401
     r = await client.post("/auth/login", json={"email": "coach@example.com", "password": "secret123"})
