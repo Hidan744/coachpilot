@@ -276,7 +276,7 @@ class TeamDashboard extends ConsumerWidget {
           ),
           _ReportTile(
             icon: Icons.person_outline,
-            title: 'Для игрока и родителей',
+            title: team.ageGroup == 'adult' ? 'Для игрока' : 'Для игрока и родителей',
             subtitle: 'Визуальный отчёт о прогрессе: PDF или картинка',
             onTap: () => _pickPlayer(context, players),
           ),

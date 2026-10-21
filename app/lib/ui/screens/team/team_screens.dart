@@ -25,6 +25,13 @@ final playerProvider = StreamProvider.family<Player?, String>(
   (ref, id) => ref.watch(repoProvider).watchOne(Entities.players, id, Player.fromJson),
 );
 
+/// Взрослая команда игрока: у взрослых нет раздела для родителей.
+final adultPlayerProvider = Provider.family<bool, String>((ref, playerId) {
+  final player = ref.watch(playerProvider(playerId)).value;
+  final teams = ref.watch(teamsProvider).value ?? const <Team>[];
+  return teams.where((t) => t.id == player?.teamId).firstOrNull?.ageGroup == 'adult';
+});
+
 final assessmentsProvider = StreamProvider.family<List<PlayerAssessment>, String>(
   (ref, playerId) => ref.watch(repoProvider).watchAssessments(playerId),
 );

@@ -50,9 +50,13 @@ class PlayerScreen extends ConsumerWidget {
     return AsyncView(player, builder: (p) {
       if (p == null) return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.person_off, title: 'Игрок удалён'));
       final snap = ref.watch(playerSnapshotProvider(p.id));
+      // У взрослой команды вкладки «Родителям» нет.
+      final adult = ref.watch(adultPlayerProvider(p.id));
+      final tabs = adult ? 4 : 5;
       return DefaultTabController(
-        length: 5,
-        initialIndex: initialTab.clamp(0, 4),
+        key: ValueKey('tabs_$tabs'),
+        length: tabs,
+        initialIndex: initialTab.clamp(0, tabs - 1),
         child: Scaffold(
           appBar: AppBar(
             title: Text(p.fullName),
@@ -82,11 +86,17 @@ class PlayerScreen extends ConsumerWidget {
           body: NestedScrollView(
             headerSliverBuilder: (context, _) => [
               SliverToBoxAdapter(child: _Header(player: p, snap: snap)),
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: TabBar(
                   isScrollable: true,
                   tabAlignment: TabAlignment.start,
-                  tabs: [Tab(text: 'Обзор'), Tab(text: 'ОФП'), Tab(text: 'Развитие'), Tab(text: 'Статистика'), Tab(text: 'Родителям')],
+                  tabs: [
+                    const Tab(text: 'Обзор'),
+                    const Tab(text: 'ОФП'),
+                    const Tab(text: 'Развитие'),
+                    const Tab(text: 'Статистика'),
+                    if (!adult) const Tab(text: 'Родителям'),
+                  ],
                 ),
               ),
             ],
@@ -97,10 +107,11 @@ class PlayerScreen extends ConsumerWidget {
                     PhysicalTab(snap),
                     ListView(padding: const EdgeInsets.only(bottom: 40), children: [DevelopmentSection(p)]),
                     PlayerStatsTab(snap),
-                    ListView(
-                      padding: const EdgeInsets.only(bottom: 40),
-                      children: [ParentSection(p, present: snap.present, total: snap.total)],
-                    ),
+                    if (!adult)
+                      ListView(
+                        padding: const EdgeInsets.only(bottom: 40),
+                        children: [ParentSection(p, present: snap.present, total: snap.total)],
+                      ),
                   ]),
           ),
         ),

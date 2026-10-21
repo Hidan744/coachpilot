@@ -13,6 +13,7 @@ import '../../../sync/api_client.dart';
 import '../../theme.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/common.dart';
+import 'team_screens.dart';
 
 final devPlansProvider = StreamProvider.family<List<DevelopmentPlan>, String>(
   (ref, playerId) => ref.watch(repoProvider).watchDevPlans(playerId),
@@ -55,7 +56,7 @@ class DevelopmentSection extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Индивидуальные цели и задания на неделю или сезон: что отработать, сколько раз, '
-            'на что обратить внимание. Игрок и родители увидят план по ссылке.',
+            'на что обратить внимание. ${ref.watch(adultPlayerProvider(player.id)) ? 'Игрок увидит план в отчёте.' : 'Игрок и родители увидят план по ссылке.'}',
             style: t.textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
           ),
         ),
@@ -345,8 +346,10 @@ class _DevPlanScreenState extends ConsumerState<DevPlanScreen> {
           contentPadding: EdgeInsets.zero,
           value: _shared,
           onChanged: (v) => setState(() => _shared = v),
-          title: const Text('Видно игроку и родителям'),
-          subtitle: const Text('Попадёт на страницу по ссылке и в сообщение для родителей'),
+          title: Text(ref.watch(adultPlayerProvider(widget.playerId)) ? 'Видно игроку' : 'Видно игроку и родителям'),
+          subtitle: Text(ref.watch(adultPlayerProvider(widget.playerId))
+              ? 'Попадёт в отчёт игрока'
+              : 'Попадёт на страницу по ссылке и в сообщение для родителей'),
         ),
         const SizedBox(height: 8),
         FilledButton(onPressed: _save, child: const Text('Сохранить план')),
