@@ -35,3 +35,18 @@ def test_rate_limiter_window():
 async def test_request_id_header(client):
     r = await client.get("/health")
     assert len(r.headers["x-request-id"]) >= 8
+
+
+def test_prod_settings_reject_wildcard_cors():
+    import pytest
+
+    from app.config import Settings
+    from app.main import check_prod_settings
+
+    secret = "x" * 40
+    check_prod_settings(Settings(env="dev", cors_origins=["*"]))
+    check_prod_settings(Settings(env="prod", jwt_secret=secret, cors_origins=["https://app.example.ru"]))
+    with pytest.raises(RuntimeError, match="CORS"):
+        check_prod_settings(Settings(env="prod", jwt_secret=secret, cors_origins=["*"]))
+    with pytest.raises(RuntimeError, match="JWT"):
+        check_prod_settings(Settings(env="prod", cors_origins=["https://app.example.ru"]))

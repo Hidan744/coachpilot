@@ -14,9 +14,18 @@ from app.routers import account, ai, auth, events, shares, sync
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("coachpilot")
 
-_settings = get_settings()
-if _settings.env == "prod" and ("change-me" in _settings.jwt_secret or len(_settings.jwt_secret) < 32):
-    raise RuntimeError("CP_JWT_SECRET не задан: в продакшене нужен случайный секрет длиной от 32 символов")
+
+def check_prod_settings(st) -> None:
+    """Не даёт запустить продакшен с небезопасными настройками по умолчанию."""
+    if st.env != "prod":
+        return
+    if "change-me" in st.jwt_secret or len(st.jwt_secret) < 32:
+        raise RuntimeError("CP_JWT_SECRET не задан: в продакшене нужен случайный секрет длиной от 32 символов")
+    if "*" in st.cors_origins:
+        raise RuntimeError('CP_CORS_ORIGINS не задан: в продакшене укажите адреса приложения, а не "*"')
+
+
+check_prod_settings(get_settings())
 
 app = FastAPI(title="CoachPilot API", version="0.1.0")
 app.add_middleware(

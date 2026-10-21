@@ -93,7 +93,7 @@ pytest -q            # нужна БД coachpilot_test, адрес — в CP_DAT
 `/auth/register` (`backend/app/routers/auth.py`) не ограничен и по ответу 409 показывает,
 что email уже зарегистрирован. Добавить лимит по IP (тот же `RateLimiter`).
 
-### [ ] 6. CORS `*` по умолчанию
+### [x] 6. CORS `*` по умолчанию
 
 `backend/app/config.py`: `cors_origins = ["*"]`. В `backend/app/main.py` рядом с проверкой
 `jwt_secret` добавить: при `env == "prod"` и `"*"` в `cors_origins` — `RuntimeError`.
