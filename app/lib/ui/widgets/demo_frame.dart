@@ -184,6 +184,11 @@ class _Showcase extends StatelessWidget {
           'Все данные — пример команды. Нажимайте, меняйте, создавайте: демо работает прямо в браузере.',
           style: TextStyle(fontSize: 12.5, color: Color(0xFF8E8E98)),
         ),
+        if (AppBrand.build.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Версия от ${AppBrand.build}', style: TextStyle(fontSize: 12, color: Color(0xFF5A5A62))),
+          ),
       ],
     ),
   );

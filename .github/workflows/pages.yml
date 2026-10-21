@@ -34,6 +34,7 @@ jobs:
           --base-href /${{ github.event.repository.name }}/
           --dart-define=DEMO_ONLY=true
           --dart-define=DEMO_SAMPLE=true
+          --dart-define=BUILD="$(TZ=Europe/Moscow date '+%d.%m %H:%M')"
           --dart-define=API_URL=${{ vars.API_URL || 'https://api.invalid' }}
       - uses: actions/upload-pages-artifact@v3
         with:

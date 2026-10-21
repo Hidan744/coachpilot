@@ -7,6 +7,9 @@ import 'widgets/motion.dart';
 class AppBrand {
   static const appName = 'CoachPilot';
 
+  /// Дата сборки (задаётся при публикации): по ней видно, какая версия открыта.
+  static const build = String.fromEnvironment('BUILD');
+
   /// Название клуба задаётся при сборке: --dart-define=CLUB_NAME="ФК ...". По умолчанию — без клуба.
   static const clubName = String.fromEnvironment('CLUB_NAME');
 
