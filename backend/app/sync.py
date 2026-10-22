@@ -70,7 +70,7 @@ REGISTRY: dict[str, EntitySpec] = {
     ),
     "tactic_boards": EntitySpec(
         m.TacticBoard, s.TacticBoardData,
-        refs={"team_id": (m.Team, False), "match_id": (m.Match, False)},
+        refs={"team_id": (m.Team, False), "match_id": (m.Match, False), "session_id": (m.TrainingSession, False)},
     ),
     "parent_notes": EntitySpec(m.ParentNote, s.ParentNoteData, refs={"player_id": (m.Player, False)}),
     "match_stats": EntitySpec(

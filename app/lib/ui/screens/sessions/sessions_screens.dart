@@ -18,6 +18,7 @@ import '../../theme.dart';
 import '../../widgets/common.dart';
 import '../calendar/calendar_screen.dart' show matchesProvider;
 import '../library/library_screens.dart';
+import '../tactics/tactics_screens.dart' show boardsProvider;
 import '../team/performance_providers.dart' show allReportsProvider, allDevPlansProvider;
 import '../team/team_screens.dart' show playersProvider, allAttendanceProvider;
 
@@ -841,6 +842,18 @@ class _PlanEditor extends ConsumerWidget {
           ]),
         ),
         _PlanBCard(session: s, team: team, onApply: (blocks) => _save(ref, s.copyWith(blocks: blocks))),
+        for (final b in ref.watch(boardsProvider).value ?? const <TacticBoard>[])
+          if (b.sessionId == s.id)
+            Card(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: ListTile(
+                leading: const Icon(Icons.draw_outlined),
+                title: Text(b.title),
+                subtitle: const Text('Схема к занятию'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/tactics/${b.id}'),
+              ),
+            ),
       ]),
       bottomNavigationBar: SafeArea(
         child: Padding(

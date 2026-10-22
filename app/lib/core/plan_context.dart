@@ -149,6 +149,14 @@ TeamHistory teamHistory({
   if (lastReport != null && lastReport.toImprove.isNotEmpty) {
     priorities.add(TeamPriority(lastReport.toImprove, 'отчёт «${last!.title}»: что улучшить'));
   }
+  // Задачи на тренировку из разбора последнего сыгранного матча.
+  final played = [
+    for (final m in matches)
+      if (m.teamId == team.id && m.startsAt.isBefore(at) && m.review.tasks.isNotEmpty && at.difference(m.startsAt).inDays <= 14) m
+  ]..sort((a, b) => b.startsAt.compareTo(a.startsAt));
+  for (final t in played.firstOrNull?.review.tasks.take(2) ?? const <String>[]) {
+    priorities.add(TeamPriority(t, 'разбор матча с «${played.first.opponent}»'));
+  }
   for (final g in team.seasonGoals.where((g) => !g.done).take(2)) {
     priorities.add(TeamPriority(g.text, 'цель сезона'));
   }

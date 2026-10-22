@@ -994,6 +994,9 @@ class Match implements Entity {
   final String venue, competition, status, notes;
   final int? scoreFor, scoreAgainst;
 
+  /// Разбор матча: итоги, выводы, задачи на тренировку, заметки по игрокам, видеоэпизоды.
+  final MatchReview review;
+
   Match({
     required this.id,
     required this.teamId,
@@ -1007,6 +1010,7 @@ class Match implements Entity {
     this.scoreFor,
     this.scoreAgainst,
     this.notes = '',
+    this.review = const MatchReview(),
   });
 
   bool get hasScore => scoreFor != null && scoreAgainst != null;
@@ -1025,6 +1029,7 @@ class Match implements Entity {
         scoreFor: j['score_for'],
         scoreAgainst: j['score_against'],
         notes: j['notes'] ?? '',
+        review: MatchReview.fromJson((j['review'] as Json?) ?? const {}),
       );
 
   @override
@@ -1040,7 +1045,112 @@ class Match implements Entity {
         'score_for': scoreFor,
         'score_against': scoreAgainst,
         'notes': notes,
+        'review': review.toJson(),
       };
+
+  Match copyWith({MatchReview? review}) => Match.fromJson(id, {...toJson(), if (review != null) 'review': review.toJson()});
+}
+
+/// Эпизод видеоразбора.
+class VideoEpisode {
+  const VideoEpisode({
+    required this.id,
+    required this.t,
+    this.end,
+    this.tag = 'other',
+    this.comment = '',
+    this.players = const [],
+    this.boardId,
+  });
+
+  final String id;
+
+  /// Секунды от начала видео.
+  final int t;
+  final int? end;
+  final String tag, comment;
+  final List<String> players;
+  final String? boardId;
+
+  static const tags = {
+    'attack': 'Атака',
+    'defense': 'Оборона',
+    'transition': 'Переход',
+    'set_piece': 'Стандарт',
+    'goal': 'Гол',
+    'chance': 'Момент',
+    'mistake': 'Ошибка',
+    'good': 'Удачно',
+    'other': 'Другое',
+  };
+
+  String get time => '${t ~/ 60}:${(t % 60).toString().padLeft(2, '0')}';
+
+  factory VideoEpisode.fromJson(Json j) => VideoEpisode(
+        id: j['id'] ?? '',
+        t: j['t'] ?? 0,
+        end: j['end'],
+        tag: j['tag'] ?? 'other',
+        comment: j['comment'] ?? '',
+        players: _strList(j['players']),
+        boardId: j['board_id'],
+      );
+
+  Json toJson() => {'id': id, 't': t, 'end': end, 'tag': tag, 'comment': comment, 'players': players, 'board_id': boardId};
+}
+
+/// Разбор матча тренером.
+class MatchReview {
+  const MatchReview({
+    this.summary = '',
+    this.conclusions = '',
+    this.tasks = const [],
+    this.playerNotes = const {},
+    this.videoUrl = '',
+    this.episodes = const [],
+  });
+
+  final String summary, conclusions, videoUrl;
+  final List<String> tasks;
+  final Map<String, String> playerNotes;
+  final List<VideoEpisode> episodes;
+
+  bool get isEmpty => summary.isEmpty && conclusions.isEmpty && tasks.isEmpty && playerNotes.isEmpty && episodes.isEmpty;
+
+  factory MatchReview.fromJson(Json j) => MatchReview(
+        summary: j['summary'] ?? '',
+        conclusions: j['conclusions'] ?? '',
+        tasks: _strList(j['tasks']),
+        playerNotes: {for (final e in ((j['player_notes'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
+        videoUrl: j['video_url'] ?? '',
+        episodes: [for (final e in (j['episodes'] as List?) ?? const []) VideoEpisode.fromJson(e as Json)],
+      );
+
+  Json toJson() => {
+        'summary': summary,
+        'conclusions': conclusions,
+        'tasks': tasks,
+        'player_notes': {for (final e in playerNotes.entries) if (e.value.trim().isNotEmpty) e.key: e.value},
+        'video_url': videoUrl,
+        'episodes': [for (final e in episodes) e.toJson()],
+      };
+
+  MatchReview copyWith({
+    String? summary,
+    String? conclusions,
+    List<String>? tasks,
+    Map<String, String>? playerNotes,
+    String? videoUrl,
+    List<VideoEpisode>? episodes,
+  }) =>
+      MatchReview(
+        summary: summary ?? this.summary,
+        conclusions: conclusions ?? this.conclusions,
+        tasks: tasks ?? this.tasks,
+        playerNotes: playerNotes ?? this.playerNotes,
+        videoUrl: videoUrl ?? this.videoUrl,
+        episodes: episodes ?? this.episodes,
+      );
 }
 
 class Weekdays {
@@ -1414,7 +1524,7 @@ class PlanWeek {
 class TacticBoard implements Entity {
   @override
   final String id;
-  final String? teamId, matchId;
+  final String? teamId, matchId, sessionId;
   final String title;
   final String formation;
   final Scheme scheme;
@@ -1425,6 +1535,7 @@ class TacticBoard implements Entity {
     required this.id,
     this.teamId,
     this.matchId,
+    this.sessionId,
     required this.title,
     this.formation = '',
     this.scheme = const Scheme(field: 'full_v'),
@@ -1436,6 +1547,7 @@ class TacticBoard implements Entity {
         id: id,
         teamId: j['team_id'],
         matchId: j['match_id'],
+        sessionId: j['session_id'],
         title: j['title'] ?? '',
         formation: j['formation'] ?? '',
         scheme: Scheme.fromJson((j['scheme'] as Json?) ?? const {'field': 'full_v'}),
@@ -1446,6 +1558,7 @@ class TacticBoard implements Entity {
   Json toJson() => {
         'team_id': teamId,
         'match_id': matchId,
+        'session_id': sessionId,
         'title': title,
         'formation': formation,
         'scheme': scheme.toJson(),

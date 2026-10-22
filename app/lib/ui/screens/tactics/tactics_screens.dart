@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/export/plan_export.dart' show loadPdfFonts;
+import '../../../core/export/save_file.dart';
+import '../../../core/export/scheme_image.dart';
 import '../../../core/providers.dart';
 import '../../../core/tactics.dart';
 import '../../../data/models.dart';
@@ -178,6 +182,39 @@ class _TacticBoardScreenState extends ConsumerState<TacticBoardScreen> {
     });
   }
 
+  /// Привязать схему к тренировке: она появится в плане занятия.
+  Future<void> _linkSession() async {
+    final b = _board;
+    if (b == null) return;
+    final sessions = [
+      for (final x in await ref.read(repoProvider).list(Entities.sessions, TrainingSession.fromJson))
+        if ((b.teamId == null || x.teamId == b.teamId) && x.status != 'cancelled') x,
+    ]..sort((a, c) => (c.scheduledAt ?? DateTime(2000)).compareTo(a.scheduledAt ?? DateTime(2000)));
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => ListView(children: [
+        const ListTile(title: Text('К какой тренировке?')),
+        if (b.sessionId != null)
+          ListTile(leading: const Icon(Icons.link_off), title: const Text('Отвязать'), onTap: () => Navigator.pop(c, '')),
+        if (sessions.isEmpty) const ListTile(title: Text('Тренировок пока нет')),
+        for (final x in sessions.take(30))
+          ListTile(
+            leading: Icon(x.id == b.sessionId ? Icons.check_circle : Icons.sports_soccer),
+            title: Text(x.title),
+            subtitle: Text(x.scheduledAt == null ? 'без даты' : DateFormat('d MMM, HH:mm', 'ru').format(x.scheduledAt!)),
+            onTap: () => Navigator.pop(c, x.id),
+          ),
+      ]),
+    );
+    if (picked == null) return;
+    final next = TacticBoard.fromJson(b.id, {...b.toJson(), 'session_id': picked.isEmpty ? null : picked});
+    _board = next;
+    await ref.read(repoProvider).put(Entities.boards, TacticBoard.fromJson(b.id, {...next.toJson(), 'scheme': _scheme.toJson()}));
+    if (mounted) showInfo(context, picked.isEmpty ? 'Схема отвязана' : 'Схема появится в плане тренировки');
+  }
+
   Future<void> _save({String? title, String? formation, String? notes}) async {
     final b = _board;
     if (b == null) return;
@@ -185,6 +222,7 @@ class _TacticBoardScreenState extends ConsumerState<TacticBoardScreen> {
       id: b.id,
       teamId: b.teamId,
       matchId: b.matchId,
+      sessionId: b.sessionId,
       title: title ?? b.title,
       formation: formation ?? b.formation,
       scheme: _scheme,
@@ -636,6 +674,15 @@ class _TacticBoardScreenState extends ConsumerState<TacticBoardScreen> {
                   _renameBoard();
                 case 'clear':
                   _clearMenu();
+                case 'png':
+                  final bytes = await schemePng(_scheme);
+                  await saveFile(bytes, '${safeFileName(board.title)}.png', 'image/png');
+                case 'pdf':
+                  await _save();
+                  final bytes = await boardPdf(_board!, await loadPdfFonts());
+                  await saveFile(bytes, '${safeFileName(board.title)}.pdf', 'application/pdf');
+                case 'link':
+                  await _linkSession();
                 case 'delete':
                   if (await confirm(context, 'Удалить доску?')) {
                     await ref.read(repoProvider).remove(Entities.boards, board.id);
@@ -646,6 +693,9 @@ class _TacticBoardScreenState extends ConsumerState<TacticBoardScreen> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'rotate', child: Text('Повернуть поле')),
               PopupMenuItem(value: 'rename', child: Text('Название и заметки')),
+              PopupMenuItem(value: 'png', child: Text('Картинка PNG')),
+              PopupMenuItem(value: 'pdf', child: Text('PDF / печать')),
+              PopupMenuItem(value: 'link', child: Text('Привязать к тренировке')),
               PopupMenuItem(value: 'clear', child: Text('Очистить')),
               PopupMenuItem(value: 'delete', child: Text('Удалить доску')),
             ],

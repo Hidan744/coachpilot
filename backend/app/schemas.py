@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -267,6 +267,38 @@ class PlayerAssessmentData(BaseModel):
 DateStr = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
+class VideoEpisode(BaseModel):
+    """Эпизод видеоразбора: таймкод, тег, комментарий тренера, игроки, схема."""
+
+    id: str = Field(min_length=1, max_length=64)
+    t: int = Field(ge=0, le=6 * 3600)  # секунды от начала видео
+    end: int | None = Field(default=None, ge=0, le=6 * 3600)
+    tag: Literal["attack", "defense", "transition", "set_piece", "goal", "chance", "mistake", "good", "other"] = "other"
+    comment: str = Field(default="", max_length=1000)
+    players: list[uuid.UUID] = Field(default_factory=list, max_length=22)
+    board_id: uuid.UUID | None = None
+
+
+class MatchReview(BaseModel):
+    """Разбор матча: итоги, выводы тренера, задачи на тренировку, заметки по игрокам, видео."""
+
+    summary: str = Field(default="", max_length=5000)
+    conclusions: str = Field(default="", max_length=5000)
+    tasks: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=20)
+    player_notes: dict[str, str] = Field(default_factory=dict, max_length=40)
+    video_url: str = Field(default="", max_length=500, pattern=r"^(https?://\S+)?$")
+    episodes: list[VideoEpisode] = Field(default_factory=list, max_length=300)
+
+    @field_validator("player_notes")
+    @classmethod
+    def _notes(cls, v: dict[str, str]) -> dict[str, str]:
+        for k, text in v.items():
+            uuid.UUID(k)
+            if len(text) > 2000:
+                raise ValueError("player note too long")
+        return {k: t for k, t in v.items() if t.strip()}
+
+
 class MatchData(BaseModel):
     team_id: uuid.UUID
     opponent: str = Field(min_length=1, max_length=100)
@@ -279,6 +311,7 @@ class MatchData(BaseModel):
     score_for: int | None = Field(default=None, ge=0, le=99)
     score_against: int | None = Field(default=None, ge=0, le=99)
     notes: str = TextStr
+    review: MatchReview = Field(default_factory=MatchReview)
 
 
 class ScheduleSlotData(BaseModel):
@@ -360,6 +393,7 @@ class DevelopmentPlanData(BaseModel):
 class TacticBoardData(BaseModel):
     team_id: uuid.UUID | None = None
     match_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = None
     title: str = Field(min_length=1, max_length=150)
     formation: str = Field(default="", max_length=20)
     scheme: Scheme = Field(default_factory=Scheme)

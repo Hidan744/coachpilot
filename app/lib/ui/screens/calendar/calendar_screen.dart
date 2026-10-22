@@ -759,13 +759,20 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
     );
   }
 
+  /// Сохранить поля формы, не затирая разбор матча, который мог измениться на другом экране.
+  Future<void> _persist(Match m) async {
+    final repo = ref.read(repoProvider);
+    final current = await repo.get(Entities.matches, m.id, Match.fromJson);
+    await repo.put(Entities.matches, current == null ? m : m.copyWith(review: current.review));
+  }
+
   Future<void> _save() async {
     final m = _build();
     if (m == null) {
       showInfo(context, _teamId == null ? 'Сначала создайте команду' : 'Укажите соперника');
       return;
     }
-    await ref.read(repoProvider).put(Entities.matches, m);
+    await _persist(m);
     if (mounted) popOr(context, '/calendar');
   }
 
@@ -773,7 +780,7 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
     final m = _build();
     if (m == null) return _save();
     final repo = ref.read(repoProvider);
-    await repo.put(Entities.matches, m);
+    await _persist(m);
     final boards = await repo.list(Entities.boards, TacticBoard.fromJson);
     final existing = boards.where((b) => b.matchId == m.id).firstOrNull;
     final id = existing?.id ?? await createBoard(ref, teamId: m.teamId, matchId: m.id, title: 'Матч: ${m.opponent}');
@@ -783,7 +790,7 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
   Future<void> _stats({bool live = false}) async {
     final m = _build();
     if (m == null) return _save();
-    await ref.read(repoProvider).put(Entities.matches, m);
+    await _persist(m);
     if (mounted) context.push('/calendar/match/${m.id}/${live ? 'live' : 'stats'}');
   }
 
@@ -912,6 +919,17 @@ class _MatchFormScreenState extends ConsumerState<MatchFormScreen> {
           onPressed: () => _stats(live: true),
           icon: const Icon(Icons.bolt, color: AppColors.red),
           label: const Text('Live: отмечать во время игры'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final m = _build();
+            if (m == null) return _save();
+            await _persist(m);
+            if (context.mounted) context.push('/calendar/match/${m.id}/review');
+          },
+          icon: const Icon(Icons.video_library_outlined),
+          label: const Text('Разбор матча и видео'),
         ),
       ]),
     );

@@ -287,3 +287,30 @@ async def test_drill_source_player_changes_and_target_checkpoints(client):
     assert target["kind"] == "technical" and target["due"] == "2026-12-15" and target["checkpoints"][0]["value"] == 5
     bad = await push(client, h, up("drills", uuid.uuid4(), drill | {"video_url": "javascript:alert(1)"}))
     assert bad[0]["status"] == "rejected", bad
+
+
+async def test_match_review_and_board_session_link(client):
+    """Разбор матча с видеоэпизодами и привязка схемы к тренировке синхронизируются; чужая тренировка — отказ."""
+    h, _ = await make_user(client)
+    h2, _ = await make_user(client, email="other@example.com")
+    t_id, m_id, s_id, p_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    review = {"summary": "Итоги", "conclusions": "Выводы", "tasks": ["Выход из-под прессинга"],
+              "player_notes": {str(p_id): "Хорошо"}, "video_url": "https://video.example/1",
+              "episodes": [{"id": "e1", "t": 755, "tag": "mistake", "comment": "Потеря", "players": [str(p_id)]}]}
+    res = await push(
+        client, h, up("teams", t_id, team()),
+        up("matches", m_id, {"team_id": str(t_id), "opponent": "Динамо", "starts_at": "2026-10-18T15:00:00Z",
+                             "review": review}),
+        up("training_sessions", s_id, session_data(team_id=str(t_id))),
+        up("tactic_boards", uuid.uuid4(), {"team_id": str(t_id), "session_id": str(s_id), "title": "Прессинг"}),
+    )
+    assert [r["status"] for r in res] == ["applied"] * 4, res
+    recs = {r["entity"]: r["data"] for r in (await client.get("/sync/pull?since=0", headers=h)).json()["records"]}
+    assert recs["matches"]["review"]["episodes"][0]["t"] == 755
+    assert recs["tactic_boards"]["session_id"] == str(s_id)
+    bad = review | {"episodes": [{"id": "e", "t": -5}]}
+    res = await push(client, h, up("matches", uuid.uuid4(), {"team_id": str(t_id), "opponent": "X",
+                                                            "starts_at": "2026-10-18T15:00:00Z", "review": bad}))
+    assert res[0]["status"] == "rejected", res
+    res = await push(client, h2, up("tactic_boards", uuid.uuid4(), {"session_id": str(s_id), "title": "Чужая"}))
+    assert res[0]["status"] == "rejected", res

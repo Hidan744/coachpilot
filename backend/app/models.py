@@ -327,6 +327,7 @@ class Match(SyncMixin, Base):
     score_for: Mapped[int | None] = mapped_column(Integer)
     score_against: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str] = mapped_column(Text, default="")
+    review: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class ScheduleSlot(SyncMixin, Base):
@@ -372,6 +373,7 @@ class TacticBoard(SyncMixin, Base):
 
     team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id", ondelete="SET NULL"))
     match_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("matches.id", ondelete="SET NULL"))
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("training_sessions.id", ondelete="SET NULL"))
     title: Mapped[str] = mapped_column(String(150))
     formation: Mapped[str] = mapped_column(String(20), default="")
     scheme: Mapped[dict] = mapped_column(JSONB, default=dict)
