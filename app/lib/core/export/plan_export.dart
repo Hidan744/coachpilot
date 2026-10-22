@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../data/models.dart';
+import '../plan_context.dart';
 import '../plan_rules.dart';
 import '../session_summary.dart';
 
@@ -88,7 +89,8 @@ class PdfFonts {
 String _t(String s) => s.replaceAll('→', '—').replaceAll('←', '—');
 
 /// План в PDF A4: шапка, тайминг по блокам, карточки упражнений с инструкциями.
-Future<Uint8List> planPdf(TrainingSession s, PdfFonts f, {Team? team, String coach = ''}) async {
+/// [library] — каталог: для замен «если игроков меньше» и плана Б; без него эти разделы не печатаются.
+Future<Uint8List> planPdf(TrainingSession s, PdfFonts f, {Team? team, String coach = '', List<Drill> library = const []}) async {
   final red = PdfColor.fromInt(0xFFE30613), muted = PdfColor.fromInt(0xFF5A5A63);
   pw.TextStyle st({double size = 10, bool bold = false, PdfColor? color}) =>
       pw.TextStyle(font: bold ? f.bold : f.regular, fontSize: size, color: color);
@@ -109,6 +111,9 @@ Future<Uint8List> planPdf(TrainingSession s, PdfFonts f, {Team? team, String coa
     start += b.durationMin;
   }
   final total = start;
+  final t = team ?? Team(id: '', name: '', ageGroup: 'U12', level: 'amateur', defaultPlayers: s.playersExpected ?? 12, equipment: s.equipment);
+  final inPlan = {for (final b in s.blocks) ?b.drillId};
+  final alt = library.isEmpty ? const <String, Drill>{} : planB(s.blocks, library, t, s.playersExpected ?? t.defaultPlayers);
   doc.addPage(pw.MultiPage(
     pageFormat: PdfPageFormat.a4,
     margin: const pw.EdgeInsets.fromLTRB(36, 32, 36, 32),
@@ -170,8 +175,24 @@ Future<Uint8List> planPdf(TrainingSession s, PdfFonts f, {Team? team, String coa
               ];
             }(),
             if (b.notes.isNotEmpty) ...[label('Заметка тренера'), pw.Text(_t(b.notes), style: st(size: 9.5))],
+            if (library.isNotEmpty && fewerPlayersNote(b, library, t, inPlan: inPlan).isNotEmpty) ...[
+              label('Если игроков меньше'),
+              pw.Text(_t(fewerPlayersNote(b, library, t, inPlan: inPlan)), style: st(size: 9.5)),
+            ],
+            if (s.blocks.indexOf(b) + 1 < s.blocks.length) ...[
+              label('Переход'),
+              pw.Text(_t(transitionNote(b, s.blocks[s.blocks.indexOf(b) + 1])), style: st(size: 9.5, color: muted)),
+            ],
           ]),
         ),
+      ],
+      if (alt.isNotEmpty) ...[
+        pw.SizedBox(height: 12),
+        pw.Text('План Б: плохая погода или мини-площадка', style: st(size: 12, bold: true)),
+        bullets([
+          for (final b in s.blocks)
+            if (alt[b.id] case final d?) '${b.title} -> ${d.title}${d.fieldSize.isEmpty ? '' : ' (${d.fieldSize})'}',
+        ]),
       ],
     ],
   ));

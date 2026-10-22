@@ -432,3 +432,16 @@ class StaffMember(SyncMixin, Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     team_ids: Mapped[list] = mapped_column(JSONB, default=list)
     notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class AdviceDecision(SyncMixin, Base):
+    """Решение тренера по рекомендации: принять, отклонить или изменить (своя формулировка действия)."""
+
+    __tablename__ = "advice_decisions"
+
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id", ondelete="CASCADE"))
+    key: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(10))
+    note: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(String(300), default="")
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

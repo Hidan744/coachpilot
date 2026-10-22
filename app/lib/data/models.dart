@@ -29,11 +29,12 @@ class Entities {
   static const matchStats = 'match_stats';
   static const physicalTests = 'physical_tests';
   static const staff = 'staff';
+  static const adviceDecisions = 'advice_decisions';
 
   /// Все сущности — для резервной копии.
   static const all = [
     teams, players, drills, favorites, sessions, attendance, notes, reports, assessments,
-    matches, slots, devPlans, boards, parentNotes, matchStats, physicalTests, staff,
+    matches, slots, devPlans, boards, parentNotes, matchStats, physicalTests, staff, adviceDecisions,
   ];
 
   /// Поле-родитель для индекса parentId в локальной БД.
@@ -52,6 +53,7 @@ class Entities {
     parentNotes: 'player_id',
     matchStats: 'match_id',
     physicalTests: 'player_id',
+    adviceDecisions: 'team_id',
   };
 
   /// Сущности, где сервер не перезаписывает правку молча, а возвращает конфликт.
@@ -582,14 +584,24 @@ class TrainingBlock {
         if (variant != 'base') 'variant': variant,
       };
 
-  TrainingBlock copyWith({String? phase, String? title, int? durationMin, String? notes, String? why, String? dosage, String? variant}) =>
+  TrainingBlock copyWith({
+    String? phase,
+    String? title,
+    int? durationMin,
+    String? notes,
+    String? why,
+    String? dosage,
+    String? variant,
+    String? drillId,
+    Json? drill,
+  }) =>
       TrainingBlock(
         id: id,
         phase: phase ?? this.phase,
         title: title ?? this.title,
         durationMin: durationMin ?? this.durationMin,
-        drillId: drillId,
-        drill: drill,
+        drillId: drillId ?? this.drillId,
+        drill: drill ?? this.drill,
         notes: notes ?? this.notes,
         why: why ?? this.why,
         dosage: dosage ?? this.dosage,
@@ -1509,4 +1521,45 @@ class StaffMember implements Entity {
 
   @override
   Json toJson() => {'name': name, 'role': role, 'phone': phone, 'email': email, 'team_ids': teamIds, 'notes': notes};
+}
+
+
+/// Решение тренера по рекомендации: принять, отклонить или изменить действие своими словами.
+class AdviceDecision implements Entity {
+  @override
+  final String id;
+  final String teamId, key, status, note, title;
+  final DateTime decidedAt;
+
+  AdviceDecision({
+    required this.id,
+    required this.teamId,
+    required this.key,
+    required this.status,
+    this.note = '',
+    this.title = '',
+    required this.decidedAt,
+  });
+
+  static const labels = {'accepted': 'Принято', 'rejected': 'Отклонено', 'edited': 'Изменено'};
+
+  factory AdviceDecision.fromJson(String id, Json j) => AdviceDecision(
+        id: id,
+        teamId: j['team_id'],
+        key: j['key'] ?? '',
+        status: j['status'] ?? 'accepted',
+        note: j['note'] ?? '',
+        title: j['title'] ?? '',
+        decidedAt: _date(j['decided_at']) ?? DateTime.now(),
+      );
+
+  @override
+  Json toJson() => {
+        'team_id': teamId,
+        'key': key,
+        'status': status,
+        'note': note,
+        'title': title,
+        'decided_at': decidedAt.toUtc().toIso8601String(),
+      };
 }

@@ -211,6 +211,15 @@ async def test_player_names_not_sent_to_ai(client, seeded, provider):
     assert "игрок хорошо открывался" in prompt and "игрок после травмы" in prompt
 
 
+async def test_team_priorities_reach_prompt(client, seeded, provider):
+    h, _ = await make_user(client)
+    await plan(client, h, priorities=["Открывания под передачу (отчёт)", "Цель сезона: меньше пропущенных"])
+    payload = json.loads(provider.calls[-1][1].split("ДАННЫЕ:", 1)[1])
+    assert payload["session"]["team_priorities"][0].startswith("Открывания")
+    r = await client.post("/ai/plan", headers=h, json=req(priorities=["x" * 201]))
+    assert r.status_code == 422
+
+
 async def test_validation_errors(client, seeded, provider):
     h, _ = await make_user(client)
     r = await client.post("/ai/plan", headers=h, json=req(goal="", duration_min=5))

@@ -12,7 +12,7 @@ import logging
 import re
 import time
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, ValidationError
@@ -54,6 +54,8 @@ class PlanRequest(BaseModel):
     format: Literal["team", "group", "individual"] = "team"
     intensity: Literal["low", "medium", "high"] = "medium"
     positions: list[Literal["GK", "DF", "MF", "FW"]] = Field(default_factory=list, max_length=4)
+    # Приоритеты команды из истории (отчёты, цели сезона, программы игроков) — текстом, с источником.
+    priorities: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=6)
 
 
 class PlanOut(BaseModel):
@@ -118,7 +120,9 @@ SYSTEM_PROMPT = """Ты — помощник футбольного тренер
    team — вся команда), intensity (low / medium / high — для основной и игровой части)
    и positions (акцент упражнений на эти линии: GK — вратари, DF — оборона, MF — передачи и владение,
    FW — удары и обводка).
-7. Если данных недостаточно, перечисли допущения в assumptions. Если без ответа тренера план
+7. История команды (history) и team_priorities — главное: не повторяй упражнения последних занятий без причины,
+   направь основную часть на приоритеты команды и в assumptions назови, какой приоритет учтён.
+8. Если данных недостаточно, перечисли допущения в assumptions. Если без ответа тренера план
    составить нельзя, задай один вопрос в clarifying_question и верни пустой список blocks.
 
 Ответь строго одним JSON-объектом без пояснений:
@@ -236,6 +240,7 @@ def build_prompt(req: PlanRequest, aliases: dict[str, m.Drill], history: list[di
             "positions": req.positions,
             "constraints": scrub(req.constraints),
             "coach_answer": scrub(req.answer),
+            "team_priorities": [scrub(p) for p in req.priorities],
         },
         "candidates": [
             {"id": a, "title": d.title, "category": d.category, "goal": d.goal[:160],

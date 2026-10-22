@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/export/plan_export.dart';
 import '../../../core/export/save_file.dart';
+import '../../../core/plan_context.dart';
 import '../../../core/plan_rules.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
@@ -15,7 +16,10 @@ import '../../../data/repo.dart';
 import '../../../sync/api_client.dart';
 import '../../theme.dart';
 import '../../widgets/common.dart';
+import '../calendar/calendar_screen.dart' show matchesProvider;
 import '../library/library_screens.dart';
+import '../team/performance_providers.dart' show allReportsProvider, allDevPlansProvider;
+import '../team/team_screens.dart' show playersProvider, allAttendanceProvider;
 
 final sessionsProvider = StreamProvider<List<TrainingSession>>(
   (ref) => ref.watch(repoProvider).watchSessions(),
@@ -205,6 +209,12 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
   String? _level; // null — уровень команды
   final Set<String> _positions = {};
 
+  /// Учитывать историю: не повторять упражнения последних занятий.
+  bool _avoidRecent = true;
+
+  /// Кто будет на занятии; null — все активные, кроме травмированных.
+  Set<String>? _present;
+
   @override
   void initState() {
     super.initState();
@@ -216,11 +226,34 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
 
   void _applyTeam(Team t) {
     _team = t;
+    _present = null;
     _players = t.defaultPlayers;
     _equipment = {...t.equipment, 'balls', 'cones'};
   }
 
-  Map<String, dynamic> _request({String answer = '', bool useAi = true}) => {
+  /// История выбранной команды — для подбора и подсказок.
+  TeamHistory? _history() {
+    final team = _team;
+    if (team == null) return null;
+    final players = ref.watch(playersProvider(team.id)).value ?? const <Player>[];
+    return teamHistory(
+      team: team,
+      sessions: ref.watch(sessionsProvider).value ?? const [],
+      reports: {for (final r in ref.watch(allReportsProvider).value ?? const <SessionReport>[]) r.sessionId: r},
+      attendance: ref.watch(allAttendanceProvider).value ?? const [],
+      players: players,
+      plans: ref.watch(allDevPlansProvider).value ?? const [],
+      matches: ref.watch(matchesProvider).value ?? const [],
+    );
+  }
+
+  List<Player> _roster() =>
+      _team == null ? const [] : [for (final p in ref.read(playersProvider(_team!.id)).value ?? const <Player>[]) if (p.active) p];
+
+  Set<String> _presentIds(TeamHistory? h) =>
+      _present ?? {for (final p in _roster()) if (!(h?.injured.contains(p.id) ?? false)) p.id};
+
+    Map<String, dynamic> _request({String answer = '', bool useAi = true}) => {
         'team_id': _team?.id,
         'age_group': _team?.ageGroup ?? 'U12',
         'level': _level ?? _team?.level ?? 'amateur',
@@ -236,6 +269,7 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
         'constraints': _constraints.text.trim(),
         'answer': answer,
         'use_ai': useAi,
+        'priorities': [for (final p in _history()?.priorities.take(6) ?? const <TeamPriority>[]) _clip('${p.text} (${p.source})', 200)],
       };
 
   Future<void> _generate({String answer = ''}) async {
@@ -293,6 +327,7 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
     final library = await ref.read(repoProvider).list(Entities.drills, Drill.fromJson);
     final team = _team ??
         Team(id: '', name: '', ageGroup: 'U12', level: 'amateur', defaultPlayers: _players, equipment: _equipment.toList());
+    final hist = _history();
     final blocks = planByRules(
       library: library,
       team: team,
@@ -305,9 +340,11 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       intensity: _intensity,
       positions: _positions.toList(),
       level: _level ?? _team?.level,
+      field: _field,
+      recentDrillIds: _avoidRecent ? hist?.recentDrillIds ?? const {} : const {},
     );
     if (blocks.isEmpty) {
-      if (mounted) showInfo(context, 'В библиотеке нет подходящих упражнений — ослабьте требования к инвентарю.');
+      if (mounted) showInfo(context, 'В библиотеке нет подходящих упражнений — ослабьте требования к инвентарю или площадке.');
       return;
     }
     ref.read(analyticsProvider).track('ai_plan_generated', {'source': 'offline_rules'});
@@ -317,7 +354,11 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
       assumptions: [
         'Локальный подбор по правилам из каталога упражнений — без нейросети. У каждого блока указано, почему он выбран.',
         '${formatLabels[_format]} тренировка, интенсивность ${intensityLabels[_intensity]!.toLowerCase()}'
-            '${_positions.isEmpty ? '' : ', акцент: ${_positions.map((p) => Positions.all[p]!.toLowerCase()).join(', ')}'}.',
+            '${_positions.isEmpty ? '' : ', акцент: ${_positions.map((p) => Positions.all[p]!.toLowerCase()).join(', ')}'}'
+            ', площадка: ${(fieldLabels[_field] ?? 'не указана').toLowerCase()}.',
+        if (hist != null)
+          for (final n in hist.notes)
+            if (_avoidRecent || !n.text.startsWith('Упражнения последних')) 'Учтено: ${n.text} [${n.basis}].',
       ],
       warnings: const [],
       ai: false,
@@ -358,6 +399,9 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
         'focus': _focus.toList(),
         'field': _field,
         'constraints': _constraints.text.trim(),
+        'avoid_recent': _avoidRecent,
+        if (_team != null && _format != 'individual')
+          'absent': [for (final p in _roster()) if (!_presentIds(_history()).contains(p.id)) p.id],
       },
     );
     await ref.read(repoProvider).put(Entities.sessions, s);
@@ -429,6 +473,18 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
               items: [for (final x in teams) DropdownMenuItem(value: x.id, child: Text('${x.name} · ${AgeGroups.label(x.ageGroup)}'))],
               onChanged: (id) => setState(() => _applyTeam(teams.firstWhere((x) => x.id == id))),
             ),
+          if (_history() case final h? when !h.isEmpty) ...[
+            const SizedBox(height: 12),
+            _HistoryCard(
+              history: h,
+              avoidRecent: _avoidRecent,
+              onAvoidRecent: (v) => setState(() => _avoidRecent = v),
+              onPriority: (p) => setState(() => _goal.text = p.text),
+              onIntensity: h.suggestedIntensity == null || h.suggestedIntensity == _intensity
+                  ? null
+                  : () => setState(() => _intensity = h.suggestedIntensity!),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _goal,
@@ -456,6 +512,17 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
             }),
           ),
           const SizedBox(height: 12),
+          if (_team != null && _format != 'individual' && _roster().isNotEmpty)
+            _AvailabilityTile(
+              roster: _roster(),
+              present: _presentIds(_history()),
+              absentLately: {for (final p in _history()?.absentLately ?? const <Player>[]) p.id},
+              injured: _history()?.injured ?? const {},
+              onChanged: (ids) => setState(() {
+                _present = ids;
+                _players = ids.length.clamp(4, 30);
+              }),
+            ),
           Text('Игроков на занятии: $_players', style: label),
           _format == 'individual'
               ? Slider(value: _players.toDouble(), min: 1, max: 4, divisions: 3, label: '$_players', onChanged: (v) => setState(() => _players = v.round()))
@@ -624,7 +691,7 @@ class _PlanEditor extends ConsumerWidget {
                   if (context.mounted) showInfo(context, 'План скопирован — вставьте в мессенджер или заметки');
                 case 'pdf':
                   try {
-                    final bytes = await planPdf(s, await loadPdfFonts(), team: team);
+                    final bytes = await planPdf(s, await loadPdfFonts(), team: team, library: ref.read(drillsProvider).value ?? const []);
                     await saveFile(bytes, '${safeFileName(s.title)}.pdf', 'application/pdf');
                     if (context.mounted) showInfo(context, 'PDF готов: откройте его, чтобы распечатать или отправить');
                   } catch (e) {
@@ -645,6 +712,8 @@ class _PlanEditor extends ConsumerWidget {
                     if (planParamsLine(s).isNotEmpty) '${planParamsLine(s)}.',
                   ]));
                   if (context.mounted) showInfo(context, 'План пересобран: ${blocks.length} блоков, ${s.durationMin} мин');
+                case 'adapt':
+                  await _adapt(context, ref, team);
                 case 'calendar':
                   final when = await pickDateTime(context, s.scheduledAt);
                   if (when == null) return;
@@ -661,6 +730,7 @@ class _PlanEditor extends ConsumerWidget {
               PopupMenuItem(value: 'calendar', child: ListTile(leading: Icon(Icons.event_available), title: Text('В календарь'))),
               PopupMenuItem(value: 'pdf', child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('PDF / печать'))),
               PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Скопировать текстом'))),
+              PopupMenuItem(value: 'adapt', child: ListTile(leading: Icon(Icons.tune), title: Text('Изменились условия'))),
               PopupMenuItem(value: 'rebuild', child: ListTile(leading: Icon(Icons.refresh), title: Text('Пересобрать план'))),
               PopupMenuItem(value: 'duplicate', child: ListTile(leading: Icon(Icons.content_copy), title: Text('Дублировать'))),
               PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Удалить'))),
@@ -770,6 +840,7 @@ class _PlanEditor extends ConsumerWidget {
             ),
           ]),
         ),
+        _PlanBCard(session: s, team: team, onApply: (blocks) => _save(ref, s.copyWith(blocks: blocks))),
       ]),
       bottomNavigationBar: SafeArea(
         child: Padding(
@@ -809,6 +880,94 @@ class _PlanEditor extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Новые условия (игроки, длительность, инвентарь, площадка) — меняются только затронутые блоки.
+  Future<void> _adapt(BuildContext context, WidgetRef ref, Team? team) async {
+    var players = s.playersExpected ?? team?.defaultPlayers ?? 12;
+    var duration = s.durationMin;
+    var field = s.fieldType ?? 'half';
+    final equipment = {...s.equipment, 'balls', 'cones'};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, set) => AlertDialog(
+          title: const Text('Изменились условия'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Упражнения, которые перестали подходить, заменятся; остальные блоки и ваши правки останутся.'),
+              const SizedBox(height: 12),
+              Text('Игроков: $players'),
+              Slider(value: players.toDouble(), min: 1, max: 30, divisions: 29, label: '$players', onChanged: (v) => set(() => players = v.round())),
+              Row(children: [
+                const Text('Длительность'),
+                const Spacer(),
+                IconButton(onPressed: () => set(() => duration = (duration - 5).clamp(20, 180)), icon: const Icon(Icons.remove)),
+                Text('$duration мин'),
+                IconButton(onPressed: () => set(() => duration = (duration + 5).clamp(20, 180)), icon: const Icon(Icons.add)),
+              ]),
+              const Text('Площадка'),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final e in fieldLabels.entries)
+                  ChoiceChip(label: Text(e.value), selected: field == e.key, onSelected: (_) => set(() => field = e.key)),
+              ]),
+              const SizedBox(height: 8),
+              const Text('Инвентарь'),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final e in Equipment.all.entries)
+                  FilterChip(
+                    label: Text(e.value),
+                    selected: equipment.contains(e.key),
+                    onSelected: (v) => set(() => v ? equipment.add(e.key) : equipment.remove(e.key)),
+                  ),
+              ]),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Проверить план')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final library = await ref.read(repoProvider).list(Entities.drills, Drill.fromJson);
+    final r = adaptPlan(
+      blocks: s.blocks,
+      library: library,
+      team: team ?? Team(id: '', name: '', ageGroup: 'U12', level: 'amateur', defaultPlayers: players),
+      conditions: PlanConditions(players: players, durationMin: duration, equipment: equipment.toList(), field: field),
+      oldDurationMin: s.durationMin,
+      intensity: s.params['intensity'] as String? ?? 'medium',
+      dosage: dosageFor,
+    );
+    if (!context.mounted) return;
+    final apply = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(r.changes.isEmpty && r.warnings.isEmpty ? 'План подходит' : 'Что изменится'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (r.changes.isEmpty && r.warnings.isEmpty) const Text('Все упражнения подходят новым условиям — менять ничего не нужно.'),
+            for (final c in r.changes) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('• $c')),
+            for (final w in r.warnings)
+              Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('⚠ $w', style: const TextStyle(color: AppColors.warn))),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Применить')),
+        ],
+      ),
+    );
+    if (apply != true) return;
+    final json = s.copyWith(blocks: r.blocks).toJson()
+      ..['players_expected'] = players
+      ..['duration_min'] = duration
+      ..['field_type'] = field
+      ..['equipment'] = equipment.toList();
+    await ref.read(repoProvider).putJson(Entities.sessions, s.id, json);
+    if (context.mounted) showInfo(context, r.changes.isEmpty ? 'Условия сохранены' : 'Изменено: ${r.changes.length}');
   }
 
   Future<void> _editHeader(BuildContext context, WidgetRef ref, List<Team> teams) async {
@@ -1007,6 +1166,26 @@ class _BlockSheetState extends ConsumerState<_BlockSheet> {
     _title.text = d.title;
   }
 
+  /// Готовность к проведению: что делать при нехватке игроков и что подготовить к следующему блоку.
+  List<Widget> _readyNotes() {
+    final s = widget.session;
+    final library = ref.watch(drillsProvider).value ?? const <Drill>[];
+    final team = (ref.watch(teamsProvider).value ?? const <Team>[]).where((x) => x.id == s.teamId).firstOrNull ??
+        Team(id: '', name: '', ageGroup: 'U12', level: 'amateur', defaultPlayers: s.playersExpected ?? 12, equipment: s.equipment);
+    final fewer = fewerPlayersNote(_b, library, team, inPlan: {for (final b in s.blocks) ?b.drillId});
+    final next = widget.index + 1 < s.blocks.length ? transitionNote(_b, s.blocks[widget.index + 1]) : '';
+    return [
+      if (fewer.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text('Если игроков меньше: ${fewer.replaceFirst(RegExp(r'^Если [^:]+: '), '')}'),
+      ],
+      if (next.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text('Переход: $next', style: const TextStyle(color: AppColors.textMuted)),
+      ],
+    ];
+  }
+
   /// Похожее упражнение той же категории, которого ещё нет в плане; повторное нажатие — следующее.
   Future<void> _similar() async {
     final s = widget.session;
@@ -1121,6 +1300,7 @@ class _BlockSheetState extends ConsumerState<_BlockSheet> {
                 const SizedBox(height: 6),
                 Text('Дозировка: ${_b.dosage}', style: const TextStyle(fontWeight: FontWeight.w600)),
               ],
+              ..._readyNotes(),
             ]),
           ),
         ),
@@ -1170,6 +1350,7 @@ Future<List<TrainingBlock>> rebuildPlan(WidgetRef ref, TrainingSession s, Team? 
     intensity: p['intensity'] as String? ?? 'medium',
     positions: [for (final x in (p['positions'] as List?) ?? const []) '$x'],
     level: p['level'] as String? ?? team?.level,
+    field: s.fieldType,
   );
 }
 
@@ -1260,6 +1441,190 @@ class TimelineBar extends StatelessWidget {
             ]),
           ),
       ]),
+    );
+  }
+}
+
+
+String _clip(String s, int n) => s.length <= n ? s : '${s.substring(0, n - 1)}…';
+
+/// Что конструктор берёт из истории команды: приоритеты, нагрузка, повторы упражнений.
+class _HistoryCard extends StatelessWidget {
+  const _HistoryCard({
+    required this.history,
+    required this.avoidRecent,
+    required this.onAvoidRecent,
+    required this.onPriority,
+    required this.onIntensity,
+  });
+
+  final TeamHistory history;
+  final bool avoidRecent;
+  final ValueChanged<bool> onAvoidRecent;
+  final ValueChanged<TeamPriority> onPriority;
+  final VoidCallback? onIntensity;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final h = history;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.history, size: 20, color: AppColors.red),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Учтено из истории команды', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+          ]),
+          if (h.priorities.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Приоритеты — нажмите, чтобы сделать целью занятия:', style: t.textTheme.bodySmall),
+            const SizedBox(height: 4),
+            for (final p in h.priorities)
+              InkWell(
+                onTap: () => onPriority(p),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.flag_outlined, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text.rich(TextSpan(children: [
+                        TextSpan(text: p.text, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        TextSpan(text: '  · ${p.source}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                      ])),
+                    ),
+                  ]),
+                ),
+              ),
+          ],
+          if (h.intensityReason.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(Icons.speed, size: 18),
+              const SizedBox(width: 6),
+              Expanded(child: Text(h.intensityReason, style: t.textTheme.bodySmall)),
+              if (onIntensity != null)
+                TextButton(onPressed: onIntensity, child: Text(intensityLabels[h.suggestedIntensity] ?? 'Применить')),
+            ]),
+          ],
+          if (h.recentDrillIds.isNotEmpty)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: avoidRecent,
+              onChanged: onAvoidRecent,
+              title: Text('Не повторять упражнения последних занятий (${h.recentDrillIds.length})'),
+            ),
+          if (h.absentLately.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                'Пропустили 2 из 3 последних занятий: ${h.absentLately.map((p) => p.fullName).join(', ')} — '
+                'уточните готовность и дозируйте нагрузку',
+                style: const TextStyle(color: AppColors.warn, fontSize: 12.5),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Кто будет на занятии: число игроков считается само; травмированные по умолчанию не отмечены.
+class _AvailabilityTile extends StatelessWidget {
+  const _AvailabilityTile({
+    required this.roster,
+    required this.present,
+    required this.absentLately,
+    required this.injured,
+    required this.onChanged,
+  });
+
+  final List<Player> roster;
+  final Set<String> present, absentLately, injured;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: const Icon(Icons.how_to_reg_outlined),
+        title: Text('Кто будет: ${present.length} из ${roster.length}'),
+        subtitle: injured.isEmpty ? null : Text('Травмированные (${injured.length}) не отмечены'),
+        children: [
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final p in roster)
+              FilterChip(
+                label: Text('${p.number == null ? '' : '${p.number} '}${p.lastName}${injured.contains(p.id) ? ' · травма' : ''}'),
+                selected: present.contains(p.id),
+                side: absentLately.contains(p.id) ? const BorderSide(color: AppColors.warn) : null,
+                onSelected: (v) => onChanged(v ? ({...present}..add(p.id)) : ({...present}..remove(p.id))),
+              ),
+          ]),
+          const SizedBox(height: 8),
+        ],
+      );
+}
+
+
+/// План Б на плохую погоду или мини-площадку: замены для блоков, которым нужно много места или большие ворота.
+class _PlanBCard extends ConsumerWidget {
+  const _PlanBCard({required this.session, required this.team, required this.onApply});
+
+  final TrainingSession session;
+  final Team? team;
+  final ValueChanged<List<TrainingBlock>> onApply;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = session;
+    final library = ref.watch(drillsProvider).value ?? const <Drill>[];
+    final t = team ?? Team(id: '', name: '', ageGroup: 'U12', level: 'amateur', defaultPlayers: s.playersExpected ?? 12, equipment: s.equipment);
+    final alt = planB(s.blocks, library, t, s.playersExpected ?? t.defaultPlayers);
+    if (alt.isEmpty) return const SizedBox.shrink();
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: ExpansionTile(
+        leading: const Icon(Icons.umbrella_outlined),
+        title: const Text('План Б: плохая погода или мини-площадка'),
+        subtitle: Text('Замен: ${alt.length} — без больших ворот, на площадке до 25×25 м'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          for (final b in s.blocks)
+            if (alt[b.id] case final d?)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text('«${b.title}» → «${d.title}»'),
+                subtitle: Text(d.fieldSize.isEmpty ? DrillCategories.all[d.category] ?? d.category : d.fieldSize),
+              ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Применить план Б'),
+              onPressed: () async {
+                if (!await confirm(context, 'Заменить упражнения на план Б?', text: 'Длительность блоков сохранится.', ok: 'Заменить')) return;
+                onApply([
+                  for (final b in s.blocks)
+                    if (alt[b.id] case final d?)
+                      b.copyWith(
+                        title: d.title,
+                        drillId: d.id,
+                        drill: d.toJson(),
+                        variant: 'base',
+                        why: 'План Б (погода или площадка): вместо «${b.title}» — без больших ворот и на небольшой площадке.',
+                      )
+                    else
+                      b,
+                ]);
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

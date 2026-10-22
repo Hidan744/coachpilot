@@ -390,13 +390,22 @@ class ShareOut(BaseModel):
     url: str
 
 
+class AdviceDecisionData(BaseModel):
+    team_id: uuid.UUID
+    key: str = Field(min_length=1, max_length=200)
+    status: Literal["accepted", "rejected", "edited"]
+    note: str = Field(default="", max_length=2000)
+    title: str = Field(default="", max_length=300)
+    decided_at: datetime
+
+
 # -------------------------------------------------------------------- синхронизация
 
 EntityName = Literal[
     "teams", "players", "drills", "favorites", "training_sessions", "attendance",
     "session_notes", "session_reports", "player_assessments",
     "matches", "schedule_slots", "development_plans", "tactic_boards", "parent_notes",
-    "match_stats", "physical_tests", "staff",
+    "match_stats", "physical_tests", "staff", "advice_decisions",
 ]
 
 

@@ -78,6 +78,7 @@ REGISTRY: dict[str, EntitySpec] = {
     ),
     "physical_tests": EntitySpec(m.PhysicalTest, s.PhysicalTestData, refs={"player_id": (m.Player, False)}),
     "staff": EntitySpec(m.StaffMember, s.StaffData),
+    "advice_decisions": EntitySpec(m.AdviceDecision, s.AdviceDecisionData, refs={"team_id": (m.Team, False)}),
 }
 
 

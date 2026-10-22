@@ -13,9 +13,19 @@ class SummaryItem {
 }
 
 class SessionSummary {
-  SessionSummary({required this.achieved, required this.notDone, required this.problems, required this.next, required this.missingData});
+  SessionSummary({
+    required this.achieved,
+    required this.notDone,
+    required this.problems,
+    required this.next,
+    required this.missingData,
+    this.focus,
+  });
 
   final List<SummaryItem> achieved, notDone, problems, next;
+
+  /// Главное на следующую тренировку — одна мысль с основанием; null, если данных нет.
+  final SummaryItem? focus;
 
   /// Каких данных не хватает для полной сводки.
   final List<String> missingData;
@@ -83,7 +93,14 @@ SessionSummary summarizeSession(TrainingSession s, SessionReport? r, List<Attend
   if (missed.isNotEmpty) {
     next.add(SummaryItem('Перенести на следующее занятие: ${missed.map((b) => '«${b.title}»').join(', ')}', basis: 'факт по таймеру'));
   }
-  return SessionSummary(achieved: achieved, notDone: notDone, problems: problems, next: next, missingData: missing);
+  final focus = r != null && r.nextTime.isNotEmpty
+      ? SummaryItem(r.nextTime, basis: 'решение тренера')
+      : r != null && r.toImprove.isNotEmpty
+          ? SummaryItem(r.toImprove, basis: 'отчёт тренера: что улучшить')
+          : missed.isNotEmpty
+              ? SummaryItem('Довести «${missed.first.title}»', basis: 'пропущено по таймеру')
+              : null;
+  return SessionSummary(achieved: achieved, notDone: notDone, problems: problems, next: next, missingData: missing, focus: focus);
 }
 
 /// Отчёт о занятии текстом — для штаба, мессенджера или печати.

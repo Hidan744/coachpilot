@@ -245,3 +245,22 @@ async def test_plan_weeks_and_report_notes_roundtrip(client):
     assert recs["session_reports"]["next_time"] == "Больше игр в малых составах"
     bad = report | {"player_notes": {"not-a-uuid": "x"}}
     assert (await push(client, h, up("session_reports", uuid.uuid4(), bad)))[0]["status"] == "rejected"
+
+
+async def test_advice_decisions_roundtrip_and_isolation(client):
+    """Решение тренера по рекомендации синхронизируется; чужую команду указать нельзя."""
+    h, _ = await make_user(client)
+    h2, _ = await make_user(client, email="other@example.com")
+    t_id, d_id = uuid.uuid4(), uuid.uuid4()
+    decision = {"team_id": str(t_id), "key": "down||Снизить интенсивность|2026-10-19", "status": "edited",
+                "note": "Сделаю восстановительную", "title": "Снизить интенсивность",
+                "decided_at": "2026-10-20T10:00:00Z"}
+    res = await push(client, h, up("teams", t_id, team()), up("advice_decisions", d_id, decision))
+    assert [r["status"] for r in res] == ["applied", "applied"], res
+    rec = (await client.get("/sync/pull?since=0", headers=h)).json()["records"][1]
+    assert rec["entity"] == "advice_decisions" and rec["data"]["note"] == "Сделаю восстановительную"
+    res = await push(client, h2, up("advice_decisions", uuid.uuid4(), decision))
+    assert res[0]["status"] == "rejected", res
+    bad = decision | {"status": "maybe"}
+    res = await push(client, h, up("advice_decisions", uuid.uuid4(), bad))
+    assert res[0]["status"] == "rejected", res

@@ -4,6 +4,7 @@
 import 'dart:math' as math;
 
 import '../data/models.dart';
+import 'plan_context.dart' show drillFitsArea;
 import '../ui/screens/library/library_screens.dart' show drillFitsTeam;
 
 const _goalKeywords = <(String, List<String>)>[
@@ -27,6 +28,15 @@ const _focusCategories = {
 };
 
 const _defaultMain = ['passing', 'possession', 'technique', 'dribbling', 'finishing'];
+
+/// Категории каталога, которые явно названы в тексте (пусто, если ни одна не названа).
+List<String> namedCategories(String text) {
+  final g = text.toLowerCase();
+  return {
+    for (final (pattern, cs) in _goalKeywords)
+      if (RegExp(pattern).hasMatch(g)) cs.first,
+  }.toList();
+}
 
 List<String> mainCategories(String goal, [List<String> focus = const []]) {
   final g = goal.toLowerCase();
@@ -122,6 +132,7 @@ List<TrainingBlock> planByRules({
   String intensity = 'medium',
   List<String> positions = const [],
   String? level,
+  String? field,
 }) {
   final t = Team(
     id: team.id,
@@ -133,9 +144,11 @@ List<TrainingBlock> planByRules({
   );
   final individual = format == 'individual';
   // Индивидуально: подходит упражнение для пары с тренером или помощником (до 4 человек).
-  bool fits(Drill d) => individual
-      ? drillFitsTeam(d, t, players: math.max(players, d.playersMin)) && d.playersMin <= 4
-      : drillFitsTeam(d, t, players: players);
+  bool fits(Drill d) =>
+      drillFitsArea(d, field) &&
+      (individual
+          ? drillFitsTeam(d, t, players: math.max(players, d.playersMin)) && d.playersMin <= 4
+          : drillFitsTeam(d, t, players: players));
   final fitting = library.where(fits).toList();
   final cats = [
     ...{

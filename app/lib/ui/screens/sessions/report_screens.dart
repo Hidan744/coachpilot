@@ -551,11 +551,26 @@ class _SummaryCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Сводка по занятию', style: t.textTheme.titleMedium),
-          group('Выполнено', Icons.check_circle_outline, AppColors.good, summary.achieved),
-          group('Не выполнено', Icons.remove_circle_outline, AppColors.warn, summary.notDone),
-          group('Проблемы', Icons.report_problem_outlined, AppColors.warn, summary.problems),
-          group('На следующее занятие', Icons.arrow_forward, AppColors.red, summary.next),
+          group('Что произошло', Icons.check_circle_outline, AppColors.good, [...summary.achieved, ...summary.notDone]),
+          group(
+            'Что это означает',
+            Icons.lightbulb_outline,
+            AppColors.warn,
+            summary.problems.isNotEmpty || summary.achieved.isEmpty
+                ? summary.problems
+                : const [SummaryItem('Занятие прошло без отклонений от плана', basis: 'факт и отчёт')],
+          ),
+          group('Что делать дальше', Icons.arrow_forward, AppColors.red, summary.next),
+          if (summary.focus != null) group('На чём сосредоточиться на следующей тренировке', Icons.center_focus_strong, AppColors.red, [summary.focus!]),
           group('Не хватает данных', Icons.info_outline, AppColors.textMuted, [for (final m in summary.missingData) SummaryItem(m)]),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => context.push('/team/advice'),
+              icon: const Icon(Icons.rule, size: 18),
+              label: const Text('Все рекомендации: принять или отклонить'),
+            ),
+          ),
         ]),
       ),
     );
