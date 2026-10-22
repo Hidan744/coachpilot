@@ -13,6 +13,7 @@ import 'ui/screens/calendar/match_review_screen.dart';
 import 'ui/screens/calendar/match_stats_screen.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
+import 'ui/screens/profile/platform_screen.dart';
 import 'ui/screens/profile/profile_screen.dart';
 import 'ui/screens/sessions/report_screens.dart';
 import 'ui/screens/sessions/run_screen.dart';
@@ -154,7 +155,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               ]),
             ]),
           ]),
-          StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen(), routes: [
+              GoRoute(path: 'platform', builder: (_, _) => const PlatformScreen()),
+            ]),
+          ]),
         ],
       ),
     ],

@@ -86,6 +86,15 @@ class TeamData(BaseModel):
     notes: str = TextStr
     formation: str = Field(default="", max_length=20)
     season_goals: list[TeamGoal] = Field(default_factory=list, max_length=20)
+    # Тип команды — какие функции показывать: детская, юношеская, любительская, академия, индивидуальный тренер.
+    kind: Literal["kids", "youth", "amateur", "academy", "individual"] | None = None
+
+
+class ParentConsent(BaseModel):
+    given: bool = False
+    by: str = Field(default="", max_length=100)  # кто дал: ФИО родителя
+    on: date | None = None
+    note: str = Field(default="", max_length=300)  # где хранится документ
 
 
 class ProfileChange(BaseModel):
@@ -109,6 +118,8 @@ class PlayerData(BaseModel):
     goals: str = TextStr
     # История изменений профиля: кто/когда/что — текстом.
     changes: list[ProfileChange] = Field(default_factory=list, max_length=100)
+    # Отметка тренера о согласии родителя на обработку данных ребёнка (бумажное или электронное).
+    parent_consent: ParentConsent = Field(default_factory=lambda: ParentConsent())
 
 
 class SchemeItem(BaseModel):

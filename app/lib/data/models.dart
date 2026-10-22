@@ -91,6 +91,9 @@ class Team implements Entity {
   /// Цели на сезон: текст и отметка «выполнено».
   final List<TeamGoal> seasonGoals;
 
+  /// Тип команды; null — определяется по возрасту.
+  final String? kind;
+
   Team({
     required this.id,
     required this.name,
@@ -102,6 +105,7 @@ class Team implements Entity {
     this.notes = '',
     this.formation = '',
     this.seasonGoals = const [],
+    this.kind,
   });
 
   factory Team.fromJson(String id, Json j) => Team(
@@ -115,6 +119,7 @@ class Team implements Entity {
         notes: j['notes'] ?? '',
         formation: j['formation'] ?? '',
         seasonGoals: [for (final g in (j['season_goals'] as List?) ?? const []) TeamGoal.fromJson(g as Json)],
+        kind: j['kind'],
       );
 
   @override
@@ -128,15 +133,33 @@ class Team implements Entity {
         'notes': notes,
         'formation': formation,
         'season_goals': [for (final g in seasonGoals) g.toJson()],
+        'kind': kind,
       };
 
   Team copyWith({List<TeamGoal>? seasonGoals}) => Team.fromJson(id, {
         ...toJson(),
         if (seasonGoals != null) 'season_goals': [for (final g in seasonGoals) g.toJson()],
       });
+
+  /// Профиль команды: заданный тренером или по возрасту.
+  String get profile => kind ?? (ageGroup == 'adult' ? 'amateur' : (AgeGroups.age(ageGroup) <= 12 ? 'kids' : 'youth'));
+
+  /// Что показывать: работа с родителями — для детей, юношей и академий; матчи и составы — не для индивидуальных занятий.
+  bool get hasParents => const {'kids', 'youth', 'academy'}.contains(profile);
+  bool get hasMatches => profile != 'individual';
 }
 
 /// Цель команды на сезон.
+class TeamKinds {
+  static const all = {
+    'kids': 'Детская команда',
+    'youth': 'Юношеская команда',
+    'amateur': 'Любительская взрослая',
+    'academy': 'Футбольная академия',
+    'individual': 'Индивидуальный тренер',
+  };
+}
+
 class TeamGoal {
   const TeamGoal(this.text, {this.done = false});
 
@@ -180,6 +203,9 @@ class Player implements Entity {
   /// История изменений профиля (позиция, номер, уровень…), последние 100.
   final List<ProfileChange> changes;
 
+  /// Отметка о согласии родителя на обработку данных ребёнка.
+  final ParentConsent consent;
+
   Player({
     required this.id,
     required this.teamId,
@@ -196,6 +222,7 @@ class Player implements Entity {
     this.weaknesses = '',
     this.goals = '',
     this.changes = const [],
+    this.consent = const ParentConsent(),
   });
 
   String get fullName => lastName.isEmpty ? firstName : '$firstName $lastName';
@@ -216,6 +243,7 @@ class Player implements Entity {
         weaknesses: j['weaknesses'] ?? '',
         goals: j['goals'] ?? '',
         changes: [for (final c in (j['changes'] as List?) ?? const []) ProfileChange.fromJson(c as Json)],
+        consent: ParentConsent.fromJson((j['parent_consent'] as Json?) ?? const {}),
       );
 
   @override
@@ -234,6 +262,7 @@ class Player implements Entity {
         'weaknesses': weaknesses,
         'goals': goals,
         'changes': [for (final c in changes) c.toJson()],
+        'parent_consent': consent.toJson(),
       };
 
   /// Что изменилось в профиле — текстом для истории; пусто, если важные поля не менялись.
@@ -251,6 +280,20 @@ class Player implements Entity {
       if (a.goals != b.goals) 'Цели обновлены',
     ].join('; ');
   }
+}
+
+/// Согласие родителя: кто, когда и где хранится документ. Отметку ставит тренер.
+class ParentConsent {
+  const ParentConsent({this.given = false, this.by = '', this.on, this.note = ''});
+
+  final bool given;
+  final String by, note;
+  final DateTime? on;
+
+  factory ParentConsent.fromJson(Json j) =>
+      ParentConsent(given: j['given'] ?? false, by: j['by'] ?? '', on: _parseDay(j['on']), note: j['note'] ?? '');
+
+  Json toJson() => {'given': given, 'by': by, 'on': _day(on), 'note': note};
 }
 
 class ProfileChange {

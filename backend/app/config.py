@@ -39,6 +39,26 @@ class Settings(BaseSettings):
     ai_ca_bundle: str = ""  # GigaChat: путь к сертификату НУЦ Минцифры
     ai_free_quota_month: int = 30
 
+    # Тарифы: цены в рублях и лимиты AI задаются здесь или переменными окружения, а не в интерфейсе.
+    price_pro_rub_month: int = 990
+    price_academy_rub_month: int = 4990
+    ai_pro_quota_month: int = 300
+    ai_academy_quota_month: int = 2000
+    # Оплата: off — не подключена; test — тестовый режим (недоступен при env=production).
+    payments_mode: str = "off"
+
+    # Telegram: без токена интеграция выключена и ничего не отправляет.
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    telegram_webhook_secret: str = ""
+    # Секрет для вызова рассылки напоминаний по расписанию (cron).
+    cron_secret: str = ""
+
+    # Сроки хранения (дни): удалённые записи, журналы AI-запросов и действий.
+    retention_deleted_days: int = 180
+    retention_ai_log_days: int = 365
+    retention_audit_days: int = 1095
+
 
 @lru_cache
 def get_settings() -> Settings:

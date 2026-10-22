@@ -20,6 +20,7 @@ from sqlalchemy import (
     Sequence,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -164,6 +165,7 @@ class Team(SyncMixin, Base):
     equipment: Mapped[list] = mapped_column(JSONB, default=list)
     notes: Mapped[str] = mapped_column(Text, default="")
     formation: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    kind: Mapped[str | None] = mapped_column(String(20))
     season_goals: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
@@ -184,6 +186,7 @@ class Player(SyncMixin, Base):
     weaknesses: Mapped[str] = mapped_column(Text, default="", server_default="")
     goals: Mapped[str] = mapped_column(Text, default="", server_default="")
     changes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    parent_consent: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class Drill(SyncMixin, Base):
@@ -452,3 +455,48 @@ class AdviceDecision(SyncMixin, Base):
     note: Mapped[str] = mapped_column(Text, default="")
     title: Mapped[str] = mapped_column(String(300), default="")
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuditLog(Base):
+    """Журнал важных действий: вход, экспорт и удаление данных, ссылки родителям, смена тарифа."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    action: Mapped[str] = mapped_column(String(50))
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    at: Mapped[datetime] = _now_col()
+
+
+class TelegramLink(Base):
+    """Привязка аккаунта к чату Telegram (после /start с одноразовым кодом)."""
+
+    __tablename__ = "telegram_links"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    linked_at: Mapped[datetime] = _now_col()
+
+
+class TelegramLinkCode(Base):
+    __tablename__ = "telegram_link_codes"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NotificationLog(Base):
+    """Отправленные уведомления — чтобы не слать одно и то же дважды."""
+
+    __tablename__ = "notification_log"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "ref", name="uq_notification_once"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(30))
+    ref: Mapped[str] = mapped_column(String(80))
+    channel: Mapped[str] = mapped_column(String(20), default="telegram")
+    sent_at: Mapped[datetime] = _now_col()

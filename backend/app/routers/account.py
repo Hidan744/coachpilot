@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import sync
+from app.audit import audit
 from app.db import get_db
 from app.models import User
 from app.schemas import DeleteAccountIn, ProfileUpdate, UserOut
@@ -28,8 +29,10 @@ async def update_me(
 
 @router.get("/account/export")
 async def export_account(
-    user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> dict:
+    await audit(db, user.id, "data_exported", request)
+    await db.commit()
     return {
         "user": UserOut.model_validate(user).model_dump(mode="json"),
         "data": await sync.export_all(db, user.id),
@@ -38,10 +41,11 @@ async def export_account(
 
 @router.post("/account/delete", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
-    body: DeleteAccountIn, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    body: DeleteAccountIn, request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> None:
     if not verify_password(user.password_hash, body.password):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Неверный пароль")
-    # Все данные пользователя удаляются каскадом (ON DELETE CASCADE).
+    # Все данные пользователя удаляются каскадом (ON DELETE CASCADE); в журнале остаётся обезличенная запись.
+    await audit(db, None, "account_deleted", request)
     await db.delete(user)
     await db.commit()

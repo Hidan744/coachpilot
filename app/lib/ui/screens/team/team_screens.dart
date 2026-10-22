@@ -32,6 +32,13 @@ final adultPlayerProvider = Provider.family<bool, String>((ref, playerId) {
   return teams.where((t) => t.id == player?.teamId).firstOrNull?.ageGroup == 'adult';
 });
 
+/// Есть ли у команды игрока работа с родителями (по типу команды).
+final parentsEnabledProvider = Provider.family<bool, String>((ref, playerId) {
+  final player = ref.watch(playerProvider(playerId)).value;
+  final teams = ref.watch(teamsProvider).value ?? const <Team>[];
+  return teams.where((t) => t.id == player?.teamId).firstOrNull?.hasParents ?? true;
+});
+
 final assessmentsProvider = StreamProvider.family<List<PlayerAssessment>, String>(
   (ref, playerId) => ref.watch(repoProvider).watchAssessments(playerId),
 );
@@ -317,6 +324,10 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
   late final _strengths = TextEditingController(text: widget.player?.strengths);
   late final _weaknesses = TextEditingController(text: widget.player?.weaknesses);
   late final _goals = TextEditingController(text: widget.player?.goals);
+  late bool _consent = widget.player?.consent.given ?? false;
+  late final _consentBy = TextEditingController(text: widget.player?.consent.by);
+  late final _consentNote = TextEditingController(text: widget.player?.consent.note);
+  late DateTime? _consentOn = widget.player?.consent.on;
   final _firstFocus = FocusNode();
   final _added = <String>[];
 
@@ -343,6 +354,12 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
       strengths: _strengths.text.trim(),
       weaknesses: _weaknesses.text.trim(),
       goals: _goals.text.trim(),
+      consent: ParentConsent(
+        given: _consent,
+        by: _consentBy.text.trim(),
+        on: _consent ? (_consentOn ?? DateTime.now()) : null,
+        note: _consentNote.text.trim(),
+      ),
     );
     final old = widget.player;
     final change = old == null ? '' : Player.diff(old, p);
@@ -473,6 +490,33 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
                 maxLength: 1000,
                 decoration: const InputDecoration(labelText: 'Индивидуальные цели', hintText: 'Стабильно играть в основе к весне'),
               ),
+            ],
+          ),
+          // Данные детей: ссылка родителям открывается только при отметке о согласии.
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            initiallyExpanded: _consent,
+            leading: Icon(_consent ? Icons.verified_user_outlined : Icons.privacy_tip_outlined),
+            title: Text(_consent ? 'Согласие родителя получено' : 'Согласие родителя на обработку данных'),
+            subtitle: const Text('Нужно для детей и юношей; без него ссылка родителям не создаётся'),
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _consent,
+                onChanged: (v) => setState(() {
+                  _consent = v;
+                  _consentOn ??= DateTime.now();
+                }),
+                title: const Text('Согласие получено'),
+              ),
+              if (_consent) ...[
+                TextFormField(controller: _consentBy, maxLength: 100, decoration: const InputDecoration(labelText: 'Кто дал согласие (ФИО родителя)')),
+                TextFormField(
+                  controller: _consentNote,
+                  maxLength: 300,
+                  decoration: const InputDecoration(labelText: 'Где хранится документ', hintText: 'Бумажный бланк в папке команды'),
+                ),
+              ],
             ],
           ),
           if (!isNew)

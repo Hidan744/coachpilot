@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import audit
 from app.config import get_settings
 from app.db import get_db
 from app.models import RefreshToken, Subscription, User
@@ -44,6 +45,7 @@ async def register(body: RegisterIn, request: Request, db: AsyncSession = Depend
     db.add(user)
     await db.flush()
     db.add(Subscription(user_id=user.id, ai_quota_month=get_settings().ai_free_quota_month))
+    await audit(db, user.id, "register", request, consent_version=user.consent_version)
     return await _issue_tokens(db, user)
 
 
@@ -59,6 +61,7 @@ async def login(body: LoginIn, request: Request, db: AsyncSession = Depends(get_
         login_ip_limiter.hit(ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")
     login_email_limiter.reset(email)
+    await audit(db, user.id, "login", request)
     return await _issue_tokens(db, user)
 
 

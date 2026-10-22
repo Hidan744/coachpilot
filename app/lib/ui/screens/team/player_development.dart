@@ -617,6 +617,35 @@ class ParentSection extends ConsumerWidget {
       );
       return;
     }
+    // Данные ребёнка открываются по ссылке только после отметки о согласии родителя.
+    if (!player.consent.given && !ref.read(adultPlayerProvider(player.id))) {
+      final by = TextEditingController();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: const Text('Согласие родителя'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('По ссылке видны данные ребёнка. Отметьте, что родитель дал согласие на их обработку '
+                '(бумажный бланк или сообщение).'),
+            const SizedBox(height: 12),
+            TextField(controller: by, decoration: const InputDecoration(labelText: 'Кто дал согласие (ФИО родителя)')),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Согласие получено')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await ref.read(repoProvider).put(
+            Entities.players,
+            Player.fromJson(player.id, {
+              ...player.toJson(),
+              'parent_consent': ParentConsent(given: true, by: by.text.trim(), on: DateTime.now()).toJson(),
+            }),
+          );
+    }
+    if (!context.mounted) return;
     try {
       // Игрок и его данные должны дойти до сервера раньше, чем родитель откроет ссылку.
       await ref.read(syncEngineProvider).sync().timeout(const Duration(seconds: 20), onTimeout: () {});

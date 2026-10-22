@@ -135,6 +135,13 @@ class ProfileScreen extends ConsumerWidget {
             subtitle: Text(q == null ? 'Доступно при подключении к интернету' : '${q['used']} из ${q['limit']}'),
           );
         }),
+        ListTile(
+          leading: const Icon(Icons.tune),
+          title: const Text('Тариф и интеграции'),
+          subtitle: const Text('Тариф, AI, Telegram-уведомления, журнал действий'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/profile/platform'),
+        ),
         const SectionTitle('Аккаунт'),
         ListTile(
           leading: const Icon(Icons.download_outlined),

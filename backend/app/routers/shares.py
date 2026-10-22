@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import models as m
+from app.audit import audit
 from app.config import get_settings
 from app.db import get_db
 from app.schemas import ShareOut
@@ -75,6 +76,14 @@ async def _own_player(db: AsyncSession, user: m.User, player_id: uuid.UUID) -> m
     return player
 
 
+async def _is_minor(db: AsyncSession, player: m.Player) -> bool:
+    """Несовершеннолетний: по году рождения, а без него — если команда не взрослая."""
+    if player.birth_year:
+        return date.today().year - player.birth_year < 18
+    team = await db.get(m.Team, player.team_id)
+    return team is None or team.age_group != "adult"
+
+
 @router.post("/players/{player_id}/share", response_model=ShareOut)
 async def create_share(
     player_id: uuid.UUID,
@@ -82,7 +91,12 @@ async def create_share(
     user: m.User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ShareOut:
-    await _own_player(db, user, player_id)
+    player = await _own_player(db, user, player_id)
+    if await _is_minor(db, player) and not (player.parent_consent or {}).get("given"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Нет отметки о согласии родителя на обработку данных ребёнка. Отметьте согласие в карточке игрока.",
+        )
     share = await db.scalar(
         select(m.PlayerShare).where(
             m.PlayerShare.player_id == player_id,
@@ -93,13 +107,14 @@ async def create_share(
     if share is None:
         share = m.PlayerShare(token=secrets.token_urlsafe(16), owner_id=user.id, player_id=player_id)
         db.add(share)
+        await audit(db, user.id, "share_created", request, player_id=player_id)
         await db.commit()
     return ShareOut(token=share.token, url=_url(request, share.token))
 
 
 @router.delete("/players/{player_id}/share", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_share(
-    player_id: uuid.UUID, user: m.User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    player_id: uuid.UUID, request: Request, user: m.User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ) -> None:
     shares = await db.scalars(
         select(m.PlayerShare).where(
@@ -110,6 +125,7 @@ async def revoke_share(
     )
     for sh in shares:
         sh.revoked_at = datetime.now(UTC)
+    await audit(db, user.id, "share_revoked", request, player_id=player_id)
     await db.commit()
 
 

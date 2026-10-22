@@ -54,7 +54,8 @@ class PlayerScreen extends ConsumerWidget {
       if (p == null) return Scaffold(appBar: AppBar(), body: const EmptyState(icon: Icons.person_off, title: 'Игрок удалён'));
       final snap = ref.watch(playerSnapshotProvider(p.id));
       // У взрослой команды вкладки «Родителям» нет.
-      final adult = ref.watch(adultPlayerProvider(p.id));
+      // Вкладка «Родителям» — по типу команды (детская, юношеская, академия).
+      final adult = !ref.watch(parentsEnabledProvider(p.id));
       final tabs = adult ? 5 : 6;
       return DefaultTabController(
         key: ValueKey('tabs_$tabs'),

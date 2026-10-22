@@ -185,6 +185,10 @@ try {
 
   // 8. Ссылка для родителей: страница без входа
   await tap(page, 'Ссылка для родителей');
+  // Для ребёнка — сначала отметка о согласии родителя.
+  await see(page, 'Согласие родителя');
+  await fill(page, 'Кто дал согласие (ФИО родителя)', 'Сидорова Анна');
+  await tap(page, 'Согласие получено');
   await see(page, 'Ссылка для игрока и родителей', 30000);
   await shot(page, 'cal-09-share');
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);

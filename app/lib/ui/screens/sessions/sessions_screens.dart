@@ -228,7 +228,8 @@ class _AiWizardScreenState extends ConsumerState<AiWizardScreen> {
   void _applyTeam(Team t) {
     _team = t;
     _present = null;
-    _players = t.defaultPlayers;
+    if (t.profile == 'individual') _format = 'individual';
+    _players = t.profile == 'individual' ? t.defaultPlayers.clamp(1, 4) : t.defaultPlayers;
     _equipment = {...t.equipment, 'balls', 'cones'};
   }
 

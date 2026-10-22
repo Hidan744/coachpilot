@@ -12,7 +12,8 @@ async def _setup(client, headers):
         client, headers,
         up("teams", tid, team("U16 Амкар")),
         up("players", pid, {"team_id": str(tid), "first_name": "Пётр", "last_name": "Сидоров", "number": 7,
-                            "position": "MF"}),
+                            "position": "MF",
+                            "parent_consent": {"given": True, "by": "Сидорова А.", "on": "2026-09-01"}}),
         up("training_sessions", sid, {"team_id": str(tid), "title": "Квадраты", "duration_min": 60,
                                       "status": "done", "started_at": now.isoformat()}),
         up("attendance", uuid.uuid4(), {"session_id": str(sid), "player_id": str(pid), "status": "present"}),
@@ -101,3 +102,20 @@ async def test_new_entities_validation(client):
     )
     assert [r["status"] for r in res] == ["rejected"] * 4
     assert res[2]["error"] == "invalid_reference:team_id"
+
+
+async def test_share_for_minor_requires_parent_consent_and_is_audited(client):
+    h, _ = await make_user(client)
+    tid, pid = uuid.uuid4(), uuid.uuid4()
+    await push(client, h, up("teams", tid, team("U12")),
+               up("players", pid, {"team_id": str(tid), "first_name": "Миша"}))
+    r = await client.post(f"/players/{pid}/share", headers=h)
+    assert r.status_code == 409 and "согласии родителя" in r.json()["detail"]
+    await push(client, h, up("players", pid, {"team_id": str(tid), "first_name": "Миша",
+                                               "parent_consent": {"given": True, "by": "Мама"}}))
+    r = await client.post(f"/players/{pid}/share", headers=h)
+    assert r.status_code == 200
+    await client.delete(f"/players/{pid}/share", headers=h)
+    log = (await client.get("/account/audit", headers=h)).json()
+    assert [x["action"] for x in log][:2] == ["share_revoked", "share_created"]
+    assert "register" in [x["action"] for x in log]

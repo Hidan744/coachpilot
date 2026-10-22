@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/calendar.dart';
+import '../../../core/plan_context.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
 import '../../theme.dart';
@@ -65,6 +66,8 @@ class HomeScreen extends ConsumerWidget {
           if (team != null) ...[
             const SizedBox(height: 12),
             a(_WeekStats(team: team, players: players, sessions: sessions, pendingReports: done.where((s) => !confirmed.contains(s.id)).length)),
+            const SizedBox(height: 12),
+            a(_Focus(team: team)),
             const SizedBox(height: 12),
             a(_SeasonGoals(team: team)),
           ],
@@ -382,7 +385,7 @@ class _QuickActions extends ConsumerWidget {
       (Icons.calendar_month_outlined, 'Календарь\nсезона', () => context.go('/calendar')),
       (Icons.tips_and_updates_outlined, 'Советы\nтренеру', () => context.push('/team/advice')),
       (Icons.insights_outlined, 'Прогресс\nкоманды', () => context.go('/team?tab=1')),
-      (Icons.groups_2_outlined, 'Состав и\nтактика', () => context.push('/tactics/lineup')),
+      if (team?.hasMatches ?? true) (Icons.groups_2_outlined, 'Состав и\nтактика', () => context.push('/tactics/lineup')),
       (Icons.menu_book_outlined, 'Библиотека\nупражнений', () => context.go('/library')),
     ];
     // Плитки фиксированной высоты: 4 в ряд — две строки на телефоне и на планшете.
@@ -569,6 +572,62 @@ class _SeasonGoals extends ConsumerWidget {
                       ),
                 ),
             ]),
+    );
+  }
+}
+
+
+/// Ближайший матч и текущие приоритеты команды — из истории: отчёты, разбор матча, цели, программы игроков.
+class _Focus extends ConsumerWidget {
+  const _Focus({required this.team});
+
+  final Team team;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = DateTime.now();
+    final matches = ref.watch(matchesProvider).value ?? const <Match>[];
+    final next = ([
+      for (final m in matches)
+        if (m.teamId == team.id && m.startsAt.isAfter(now) && m.status == 'scheduled') m
+    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt)))
+        .firstOrNull;
+    final h = teamHistory(
+      team: team,
+      sessions: ref.watch(sessionsProvider).value ?? const [],
+      reports: {for (final r in ref.watch(allReportsProvider).value ?? const <SessionReport>[]) r.sessionId: r},
+      attendance: ref.watch(allAttendanceProvider).value ?? const [],
+      players: ref.watch(playersProvider(team.id)).value ?? const [],
+      plans: ref.watch(allDevPlansProvider).value ?? const [],
+      matches: matches,
+    );
+    if (next == null && h.priorities.isEmpty) return const SizedBox.shrink();
+    return DashCard(
+      title: 'Фокус команды',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (next != null)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.emoji_events_outlined, color: AppColors.red),
+            title: Text('Матч: ${next.home ? '' : '@ '}${next.opponent}'),
+            subtitle: Text('${formatWhen(next.startsAt)} · через ${next.startsAt.difference(now).inDays} дн.'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/calendar/match/${next.id}'),
+          ),
+        for (final p in h.priorities.take(3))
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            leading: const Icon(Icons.flag_outlined),
+            title: Text(p.text),
+            subtitle: Text(p.source),
+            trailing: IconButton(
+              tooltip: 'Собрать тренировку на эту тему',
+              icon: const Icon(Icons.auto_awesome, color: AppColors.red),
+              onPressed: () => context.push('/sessions/new?goal=${Uri.encodeComponent(p.text)}'),
+            ),
+          ),
+      ]),
     );
   }
 }

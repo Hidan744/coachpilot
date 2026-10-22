@@ -26,6 +26,7 @@ class _TeamFormState extends ConsumerState<TeamForm> {
   late String _level = widget.team?.level ?? 'amateur';
   late final Set<String> _equipment = {...widget.team?.equipment ?? ['balls', 'cones', 'bibs', 'goals']};
   late String _formation = widget.team?.formation ?? '';
+  late String? _kind = widget.team?.kind;
   late final List<TeamGoal> _goals = [...widget.team?.seasonGoals ?? const <TeamGoal>[]];
   final _goal = TextEditingController();
 
@@ -49,6 +50,7 @@ class _TeamFormState extends ConsumerState<TeamForm> {
       equipment: _equipment.toList(),
       notes: widget.team?.notes ?? '',
       formation: _formation,
+      kind: _kind,
       seasonGoals: [..._goals, if (_goal.text.trim().isNotEmpty) TeamGoal(_goal.text.trim())],
     );
     await ref.read(repoProvider).put(Entities.teams, team);
@@ -102,6 +104,15 @@ class _TeamFormState extends ConsumerState<TeamForm> {
                 selected: _equipment.contains(e.key),
                 onSelected: (v) => setState(() => v ? _equipment.add(e.key) : _equipment.remove(e.key)),
               ),
+          ]),
+          const SizedBox(height: 16),
+          Text('Тип команды', style: Theme.of(context).textTheme.labelLarge),
+          Text('От него зависит, какие разделы показывать: родителям, матчи, составы', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ChoiceChip(label: const Text('По возрасту'), selected: _kind == null, onSelected: (_) => setState(() => _kind = null)),
+            for (final e in TeamKinds.all.entries)
+              ChoiceChip(label: Text(e.value), selected: _kind == e.key, onSelected: (_) => setState(() => _kind = e.key)),
           ]),
           const SizedBox(height: 16),
           Text('Основная игровая схема', style: Theme.of(context).textTheme.labelLarge),
