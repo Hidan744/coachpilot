@@ -754,7 +754,15 @@ class TargetRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text(t.name, style: const TextStyle(fontWeight: FontWeight.w700))),
+          Expanded(
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: t.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+              if (t.kind != 'other')
+                TextSpan(text: '  ${PlanTarget.kinds[t.kind]}', style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ])),
+          ),
+          if (t.reached)
+            const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.check_circle, size: 16, color: AppColors.good)),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(border: Border.all(color: color), borderRadius: BorderRadius.circular(6)),
@@ -766,6 +774,16 @@ class TargetRow extends StatelessWidget {
           'Сейчас: ${_n(t.current)} · Цель: ${_n(t.target)} ${t.unit}${t.gap == null ? '' : ' · разрыв ${_n(double.parse(t.gap!.toStringAsFixed(2)))}'}',
           style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
         ),
+        if (t.due != null)
+          Text(
+            'Срок: до ${DateFormat('dd.MM.yyyy').format(t.due!)}${t.overdue(DateTime.now()) ? ' — срок прошёл' : ''}',
+            style: TextStyle(fontSize: 12, color: t.overdue(DateTime.now()) ? AppColors.warn : AppColors.textMuted),
+          ),
+        if (t.checkpoints.length >= 2)
+          Text(
+            'Динамика: ${t.checkpoints.map((c) => _n(c.value)).join(' → ')} ${t.unit}',
+            style: const TextStyle(fontSize: 12),
+          ),
         const SizedBox(height: 4),
         TargetBar(progress: t.progress, height: 7),
         if (detailed && t.measure.isNotEmpty)
@@ -786,6 +804,10 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
   final measure = TextEditingController(text: initial?.measure);
   final comment = TextEditingController(text: initial?.comment);
   var priority = initial?.priority ?? 'medium';
+  var kind = initial?.kind ?? 'other';
+  var due = initial?.due;
+  final checkpoints = [...?initial?.checkpoints];
+  final pointValue = TextEditingController();
   final tests = (await ref.read(repoProvider).list(Entities.physicalTests, PhysicalTest.fromJson))
       .where((t) => t.playerId == playerId)
       .toList()
@@ -811,6 +833,7 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
                     onPressed: () => set(() {
                       name.text = m.label;
                       unit.text = m.unit;
+                      kind = 'physical';
                       final last = tests.where((t) => t.results[m.key] != null).lastOrNull;
                       if (last != null) cur.text = last.results[m.key].toString().replaceAll('.', ',');
                       measure.text = m.hint.isEmpty ? 'Контрольный тест в конце цикла' : m.hint;
@@ -822,6 +845,7 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
                     onPressed: () => set(() {
                       name.text = x.split(',').first;
                       unit.text = '%';
+                      kind = x.startsWith('Выигранные') ? 'tactical' : 'technical';
                       measure.text = 'Статистика матчей за цикл';
                     }),
                   ),
@@ -840,6 +864,68 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
             Wrap(spacing: 6, children: [
               for (final e in PlanTarget.priorities.entries)
                 ChoiceChip(label: Text(e.value), selected: priority == e.key, onSelected: (_) => set(() => priority = e.key)),
+            ]),
+            const SizedBox(height: 8),
+            Text('Вид цели', style: Theme.of(c).textTheme.labelLarge),
+            Wrap(spacing: 6, children: [
+              for (final e in PlanTarget.kinds.entries)
+                ChoiceChip(label: Text(e.value), selected: kind == e.key, onSelected: (_) => set(() => kind = e.key)),
+            ]),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_outlined),
+              title: Text(due == null ? 'Срок не задан' : 'Срок: ${DateFormat('d MMMM yyyy', 'ru').format(due!)}'),
+              trailing: Wrap(children: [
+                for (final w in const [4, 8, 12])
+                  TextButton(
+                    onPressed: () => set(() => due = DateTime.now().add(Duration(days: 7 * w))),
+                    child: Text('$w нед.'),
+                  ),
+              ]),
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: c,
+                  initialDate: due ?? DateTime.now().add(const Duration(days: 28)),
+                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 730)),
+                );
+                if (d != null) set(() => due = d);
+              },
+            ),
+            Text('Контрольные замеры', style: Theme.of(c).textTheme.labelLarge),
+            for (var i = 0; i < checkpoints.length; i++)
+              Row(children: [
+                Expanded(
+                  child: Text('${DateFormat('dd.MM.yyyy').format(checkpoints[i].on)} — '
+                      '${checkpoints[i].value.toString().replaceAll('.', ',')} ${unit.text}'),
+                ),
+                IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => set(() => checkpoints.removeAt(i))),
+              ]),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: pointValue,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Новый замер сегодня'),
+                ),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Записать'),
+                onPressed: () {
+                  final v = parse(pointValue.text);
+                  if (v == null) return;
+                  set(() {
+                    // Стартовое значение — первой точкой, чтобы видеть динамику от начала.
+                    if (checkpoints.isEmpty && parse(cur.text) != null && parse(cur.text) != v) {
+                      checkpoints.add(TargetCheckpoint(DateTime.now().subtract(const Duration(days: 1)), parse(cur.text)!, note: 'старт'));
+                    }
+                    checkpoints.add(TargetCheckpoint(DateTime.now(), v));
+                    cur.text = pointValue.text;
+                    pointValue.clear();
+                  });
+                },
+              ),
             ]),
             const SizedBox(height: 8),
             TextField(controller: measure, decoration: const InputDecoration(labelText: 'Как измеряем')),
@@ -866,5 +952,8 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
     measure: measure.text.trim(),
     comment: comment.text.trim(),
     priority: priority,
+    kind: kind,
+    due: due,
+    checkpoints: checkpoints,
   );
 }

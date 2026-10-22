@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/performance.dart';
+import '../../../core/player_timeline.dart';
 import '../../../core/recommendations.dart';
 import '../../../core/providers.dart';
 import '../../../data/models.dart';
@@ -54,7 +55,7 @@ class PlayerScreen extends ConsumerWidget {
       final snap = ref.watch(playerSnapshotProvider(p.id));
       // У взрослой команды вкладки «Родителям» нет.
       final adult = ref.watch(adultPlayerProvider(p.id));
-      final tabs = adult ? 4 : 5;
+      final tabs = adult ? 5 : 6;
       return DefaultTabController(
         key: ValueKey('tabs_$tabs'),
         length: tabs,
@@ -98,6 +99,7 @@ class PlayerScreen extends ConsumerWidget {
                     const Tab(text: 'Развитие'),
                     const Tab(text: 'Статистика'),
                     if (!adult) const Tab(text: 'Родителям'),
+                    const Tab(text: 'История'),
                   ],
                 ),
               ),
@@ -114,6 +116,7 @@ class PlayerScreen extends ConsumerWidget {
                         padding: const EdgeInsets.only(bottom: 40),
                         children: [ParentSection(p, present: snap.present, total: snap.total)],
                       ),
+                    _HistoryTab(p),
                   ]),
           ),
         ),
@@ -1046,4 +1049,87 @@ class _Insight extends StatelessWidget {
           ),
         ]),
       );
+}
+
+
+/// Единая история игрока: всё по датам, с источником каждого события.
+class _HistoryTab extends ConsumerStatefulWidget {
+  const _HistoryTab(this.player);
+
+  final Player player;
+
+  @override
+  ConsumerState<_HistoryTab> createState() => _HistoryTabState();
+}
+
+class _HistoryTabState extends ConsumerState<_HistoryTab> {
+  String? _kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.player;
+    final events = playerTimeline(
+      player: p,
+      sessions: ref.watch(sessionsProvider).value ?? const [],
+      attendance: ref.watch(allAttendanceProvider).value ?? const [],
+      reports: {for (final r in ref.watch(allReportsProvider).value ?? const <SessionReport>[]) r.sessionId: r},
+      matches: ref.watch(matchesProvider).value ?? const [],
+      stats: ref.watch(matchStatsProvider).value ?? const [],
+      tests: ref.watch(physicalTestsProvider).value ?? const [],
+      assessments: ref.watch(allAssessmentsProvider).value ?? const [],
+      plans: ref.watch(allDevPlansProvider).value ?? const [],
+    );
+    final shown = [for (final e in events) if (_kind == null || e.kind == _kind) e];
+    final t = Theme.of(context);
+    final items = <Widget>[];
+    String? month;
+    for (final e in shown) {
+      final m = DateFormat('LLLL yyyy', 'ru').format(e.at);
+      if (m != month) {
+        month = m;
+        items.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Text('${m[0].toUpperCase()}${m.substring(1)}', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        ));
+      }
+      items.add(ListTile(
+        dense: true,
+        leading: Icon(switch (e.kind) {
+          'training' => Icons.sports_soccer,
+          'match' => Icons.emoji_events_outlined,
+          'test' => Icons.timer_outlined,
+          'assessment' => Icons.star_half,
+          'goal' => Icons.flag_outlined,
+          _ => Icons.manage_history,
+        }),
+        title: Text(e.title),
+        subtitle: Text([
+          DateFormat('d MMM', 'ru').format(e.at),
+          if (e.detail.isNotEmpty) e.detail,
+          'источник: ${e.source}',
+        ].join(' · ')),
+        onTap: e.route == null ? null : () => context.push(e.route!),
+      ));
+    }
+    return ListView(padding: const EdgeInsets.only(bottom: 40), children: [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Row(children: [
+          ChoiceChip(label: const Text('Всё'), selected: _kind == null, onSelected: (_) => setState(() => _kind = null)),
+          for (final e in timelineKinds.entries)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: ChoiceChip(label: Text(e.value), selected: _kind == e.key, onSelected: (_) => setState(() => _kind = e.key)),
+            ),
+        ]),
+      ),
+      if (shown.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('Пока нет событий: отмечайте посещаемость, проводите тесты и матчи — история соберётся сама.'),
+        ),
+      ...items,
+    ]);
+  }
 }

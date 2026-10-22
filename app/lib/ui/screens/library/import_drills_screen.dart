@@ -89,12 +89,22 @@ class _ImportDrillsScreenState extends ConsumerState<ImportDrillsScreen> {
   Future<void> _import() async {
     final repo = ref.read(repoProvider);
     for (final i in _selected.toList()..sort()) {
-      await repo.put(Entities.drills, _drills[i]);
+      // Импортированный материал: права не подтверждены, пока тренер их не укажет.
+      final d = _drills[i];
+      await repo.put(
+        Entities.drills,
+        Drill.fromJson(d.id, {
+          ...d.toJson(),
+          'license': 'unknown',
+          if (d.sourceRef.isEmpty) 'source_ref': 'Импорт из файла или текста',
+          'tags': {...d.tags, 'импорт'}.toList(),
+        }),
+      );
     }
     ref.read(analyticsProvider).track('drills_imported', {'count': _selected.length, 'source': _source});
     ref.read(drillFilterProvider.notifier).update((f) => f.copyWith(tab: 'mine'));
     if (!mounted) return;
-    showInfo(context, 'Добавлено в «Мои»: ${_selected.length}. Откройте упражнение, чтобы поправить текст или нарисовать схему.');
+    showInfo(context, 'Добавлено в «Мои»: ${_selected.length} с пометкой «Права не указаны». Проверьте текст, источник и права.');
     Navigator.pop(context);
   }
 

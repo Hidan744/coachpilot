@@ -344,7 +344,13 @@ class _PlayerFormState extends ConsumerState<_PlayerForm> {
       weaknesses: _weaknesses.text.trim(),
       goals: _goals.text.trim(),
     );
-    await ref.read(repoProvider).put(Entities.players, p);
+    final old = widget.player;
+    final change = old == null ? '' : Player.diff(old, p);
+    final changes = [...?old?.changes, if (change.isNotEmpty) ProfileChange(DateTime.now(), change)];
+    await ref.read(repoProvider).put(
+          Entities.players,
+          Player.fromJson(p.id, {...p.toJson(), 'changes': [for (final c in changes.skip(changes.length > 100 ? changes.length - 100 : 0)) c.toJson()]}),
+        );
     if (widget.player == null) ref.read(analyticsProvider).track('player_added');
     if (!mounted) return;
     if (addAnother) {

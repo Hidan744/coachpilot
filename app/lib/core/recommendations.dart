@@ -391,7 +391,7 @@ List<Advice> planFactAdvice({
   for (final p in plans.where((p) => ids.contains(p.playerId))) {
     final player = players.firstWhere((x) => x.id == p.playerId);
     final weeksDone = p.weeks.isNotEmpty && p.weeks.every((w) => w.done);
-    final reached = p.targets.isNotEmpty && p.targets.every((t) => t.gap == 0);
+    final reached = p.targets.isNotEmpty && p.targets.every((t) => t.reached);
     if (!weeksDone && !reached) continue;
     out.add(Advice('up', '${player.fullName}: программа «${p.title}» выполнена',
         weeksDone ? 'Все недели программы отмечены выполненными.' : 'Все цели программы достигнуты.',

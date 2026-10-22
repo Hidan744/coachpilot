@@ -38,7 +38,9 @@ def validated() -> list[tuple[uuid.UUID, dict]]:
         if slug in slugs:
             raise ValueError(f"дубликат slug {slug}")
         slugs.add(slug)
-        data = DrillData.model_validate({**d, "source": "user"}).model_dump(mode="json")
+        data = DrillData.model_validate(
+            {"license": "catalog", "source_ref": "Каталог CoachPilot", **d, "source": "user"}
+        ).model_dump(mode="json")
         data["source"] = "system"
         out.append((drill_id(slug), data))
     return out

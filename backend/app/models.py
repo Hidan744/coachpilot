@@ -183,6 +183,7 @@ class Player(SyncMixin, Base):
     strengths: Mapped[str] = mapped_column(Text, default="", server_default="")
     weaknesses: Mapped[str] = mapped_column(Text, default="", server_default="")
     goals: Mapped[str] = mapped_column(Text, default="", server_default="")
+    changes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class Drill(SyncMixin, Base):
@@ -214,6 +215,10 @@ class Drill(SyncMixin, Base):
     variants: Mapped[dict] = mapped_column(JSONB, default=dict)  # {"easier": [], "harder": []}
     scheme: Mapped[dict | None] = mapped_column(JSONB)
     tags: Mapped[list] = mapped_column(JSONB, default=list)
+    mistakes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    source_ref: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    license: Mapped[str] = mapped_column(String(20), default="own", server_default="own")
+    video_url: Mapped[str] = mapped_column(String(500), default="", server_default="")
 
 
 class Favorite(SyncMixin, Base):

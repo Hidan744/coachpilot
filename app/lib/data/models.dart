@@ -177,6 +177,9 @@ class Player implements Entity {
   /// Сильные стороны, зоны развития и индивидуальные цели — словами тренера.
   final String strengths, weaknesses, goals;
 
+  /// История изменений профиля (позиция, номер, уровень…), последние 100.
+  final List<ProfileChange> changes;
+
   Player({
     required this.id,
     required this.teamId,
@@ -192,6 +195,7 @@ class Player implements Entity {
     this.strengths = '',
     this.weaknesses = '',
     this.goals = '',
+    this.changes = const [],
   });
 
   String get fullName => lastName.isEmpty ? firstName : '$firstName $lastName';
@@ -211,6 +215,7 @@ class Player implements Entity {
         strengths: j['strengths'] ?? '',
         weaknesses: j['weaknesses'] ?? '',
         goals: j['goals'] ?? '',
+        changes: [for (final c in (j['changes'] as List?) ?? const []) ProfileChange.fromJson(c as Json)],
       );
 
   @override
@@ -228,7 +233,35 @@ class Player implements Entity {
         'strengths': strengths,
         'weaknesses': weaknesses,
         'goals': goals,
+        'changes': [for (final c in changes) c.toJson()],
       };
+
+  /// Что изменилось в профиле — текстом для истории; пусто, если важные поля не менялись.
+  static String diff(Player a, Player b) {
+    String v(Object? x) => x == null || x == '' ? '—' : '$x';
+    return [
+      if (a.fullName != b.fullName) 'Имя: ${a.fullName} → ${b.fullName}',
+      if (a.position != b.position) 'Позиция: ${v(Positions.all[a.position] ?? a.position)} → ${v(Positions.all[b.position] ?? b.position)}',
+      if (a.number != b.number) 'Номер: ${v(a.number)} → ${v(b.number)}',
+      if (a.level != b.level) 'Уровень: ${v(Levels.all[a.level] ?? a.level)} → ${v(Levels.all[b.level] ?? b.level)}',
+      if (a.dominantFoot != b.dominantFoot) 'Нога: ${v(Feet.all[a.dominantFoot])} → ${v(Feet.all[b.dominantFoot])}',
+      if (a.active != b.active) b.active ? 'Вернулся в состав' : 'Выбыл из состава',
+      if (a.strengths != b.strengths) 'Сильные стороны обновлены',
+      if (a.weaknesses != b.weaknesses) 'Зоны развития обновлены',
+      if (a.goals != b.goals) 'Цели обновлены',
+    ].join('; ');
+  }
+}
+
+class ProfileChange {
+  const ProfileChange(this.at, this.text);
+
+  final DateTime at;
+  final String text;
+
+  factory ProfileChange.fromJson(Json j) => ProfileChange(_date(j['at']) ?? DateTime.now(), j['text'] ?? '');
+
+  Json toJson() => {'at': at.toUtc().toIso8601String(), 'text': text.length <= 300 ? text : text.substring(0, 300)};
 }
 
 // ---------------------------------------------------------------- упражнения
@@ -439,6 +472,18 @@ class Drill implements Entity {
   final Scheme? scheme;
   final List<String> tags;
 
+  /// Типичные ошибки игроков; источник материала, права на использование и ссылка на видео.
+  final List<String> mistakes;
+  final String sourceRef, license, videoUrl;
+
+  static const licenses = {
+    'own': 'Собственный материал тренера',
+    'catalog': 'Каталог CoachPilot',
+    'licensed': 'Используется по лицензии',
+    'public': 'Открытый источник',
+    'unknown': 'Права не указаны',
+  };
+
   Drill({
     required this.id,
     this.source = 'user',
@@ -462,6 +507,10 @@ class Drill implements Entity {
     this.harder = const [],
     this.scheme,
     this.tags = const [],
+    this.mistakes = const [],
+    this.sourceRef = '',
+    this.license = 'own',
+    this.videoUrl = '',
   });
 
   bool get isSystem => source == 'system';
@@ -491,6 +540,10 @@ class Drill implements Entity {
       harder: _strList(variants['harder']),
       scheme: j['scheme'] == null ? null : Scheme.fromJson(j['scheme'] as Json),
       tags: _strList(j['tags']),
+      mistakes: _strList(j['mistakes']),
+      sourceRef: j['source_ref'] ?? '',
+      license: j['license'] ?? (j['source'] == 'system' ? 'catalog' : 'own'),
+      videoUrl: j['video_url'] ?? '',
     );
   }
 
@@ -516,6 +569,10 @@ class Drill implements Entity {
         'variants': {'easier': easier, 'harder': harder},
         'scheme': scheme?.toJson(),
         'tags': tags,
+        'mistakes': mistakes,
+        'source_ref': sourceRef,
+        'license': license,
+        'video_url': videoUrl,
       };
 }
 
@@ -1088,11 +1145,30 @@ class PlanPeriods {
 }
 
 /// Показатель программы развития: сейчас → цель, как измеряем.
+/// Контрольный замер показателя цели.
+class TargetCheckpoint {
+  const TargetCheckpoint(this.on, this.value, {this.note = ''});
+
+  final DateTime on;
+  final double value;
+  final String note;
+
+  factory TargetCheckpoint.fromJson(Json j) =>
+      TargetCheckpoint(_parseDay(j['on']) ?? DateTime.now(), (j['value'] as num).toDouble(), note: j['note'] ?? '');
+
+  Json toJson() => {'on': _day(on), 'value': value, 'note': note};
+}
+
 class PlanTarget {
   final String name;
   final double? current, target;
   final String unit, measure, comment;
   final String priority; // high | medium | low
+
+  /// Вид цели (техника, тактика, физика, психология), срок и контрольные замеры.
+  final String kind;
+  final DateTime? due;
+  final List<TargetCheckpoint> checkpoints;
 
   const PlanTarget({
     required this.name,
@@ -1102,17 +1178,41 @@ class PlanTarget {
     this.measure = '',
     this.comment = '',
     this.priority = 'medium',
+    this.kind = 'other',
+    this.due,
+    this.checkpoints = const [],
   });
 
   static const priorities = {'high': 'Высокий', 'medium': 'Средний', 'low': 'Поддерживающий'};
+  static const kinds = {
+    'technical': 'Техника',
+    'tactical': 'Тактика',
+    'physical': 'Физика',
+    'mental': 'Психология',
+    'other': 'Другое',
+  };
 
   /// Разрыв до цели (по модулю): для «меньше — лучше» цель ниже текущего.
   double? get gap => current == null || target == null ? null : (target! - current!).abs();
 
+  /// «Меньше — лучше» (время бега): цель ниже первого замера; без замеров — если показатель в секундах.
+  bool get lowerBetter {
+    if (target == null) return false;
+    if (checkpoints.isNotEmpty) return target! < checkpoints.first.value;
+    final u = unit.trim().toLowerCase();
+    return (u == 'с' || u == 'сек' || u == 's') && current != null && target! < current!;
+  }
+
+  /// Цель достигнута по последнему значению.
+  bool get reached =>
+      current != null && target != null && (lowerBetter ? current! <= target! : current! >= target!);
+
+  /// Срок прошёл, а цель не достигнута.
+  bool overdue(DateTime now) => due != null && !reached && now.isAfter(due!.add(const Duration(days: 1)));
+
   /// Доля пути к цели 0..1 (от нуля шкалы); для «меньше — лучше» — отношение цели к текущему.
   double get progress {
-    if (current == null || target == null || target == 0) return 0;
-    final lowerBetter = target! < current!;
+    if (current == null || target == null || target == 0 || current == 0) return 0;
     final v = lowerBetter ? target! / current! : current! / target!;
     return v.clamp(0.0, 1.0);
   }
@@ -1125,6 +1225,9 @@ class PlanTarget {
         measure: j['measure'] ?? '',
         comment: j['comment'] ?? '',
         priority: j['priority'] ?? 'medium',
+        kind: j['kind'] ?? 'other',
+        due: _parseDay(j['due']),
+        checkpoints: [for (final c in (j['checkpoints'] as List?) ?? const []) TargetCheckpoint.fromJson(c as Json)],
       );
 
   Json toJson() => {
@@ -1135,6 +1238,9 @@ class PlanTarget {
         'measure': measure,
         'comment': comment,
         'priority': priority,
+        'kind': kind,
+        'due': due == null ? null : _day(due!),
+        'checkpoints': [for (final c in checkpoints) c.toJson()],
       };
 }
 

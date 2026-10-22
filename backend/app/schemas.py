@@ -1,7 +1,7 @@
 """Pydantic-схемы API и полей синхронизируемых сущностей."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -88,6 +88,11 @@ class TeamData(BaseModel):
     season_goals: list[TeamGoal] = Field(default_factory=list, max_length=20)
 
 
+class ProfileChange(BaseModel):
+    at: datetime
+    text: str = Field(min_length=1, max_length=300)
+
+
 class PlayerData(BaseModel):
     team_id: uuid.UUID
     first_name: str = Field(min_length=1, max_length=60)
@@ -102,6 +107,8 @@ class PlayerData(BaseModel):
     strengths: str = TextStr
     weaknesses: str = TextStr
     goals: str = TextStr
+    # История изменений профиля: кто/когда/что — текстом.
+    changes: list[ProfileChange] = Field(default_factory=list, max_length=100)
 
 
 class SchemeItem(BaseModel):
@@ -162,6 +169,11 @@ class DrillData(BaseModel):
     variants: DrillVariants = Field(default_factory=DrillVariants)
     scheme: Scheme | None = None
     tags: list[str] = StrList
+    # Типичные ошибки, источник и права на материал, ссылка на видео (если есть).
+    mistakes: list[str] = StrList
+    source_ref: str = Field(default="", max_length=200)
+    license: Literal["own", "catalog", "licensed", "public", "unknown"] = "own"
+    video_url: str = Field(default="", max_length=500, pattern=r"^(https?://\S+)?$")
 
 
 class FavoriteData(BaseModel):
@@ -294,6 +306,12 @@ class PlanItem(BaseModel):
     done: bool = False
 
 
+class Checkpoint(BaseModel):
+    on: date
+    value: float = Field(ge=-1000, le=100000)
+    note: str = Field(default="", max_length=300)
+
+
 class PlanTarget(BaseModel):
     """Показатель программы: сейчас → цель, как измеряем."""
 
@@ -304,6 +322,10 @@ class PlanTarget(BaseModel):
     measure: str = Field(default="", max_length=500)
     comment: str = Field(default="", max_length=1000)
     priority: Literal["high", "medium", "low"] = "medium"
+    # Вид цели, срок и контрольные точки (замеры по датам) — для динамики.
+    kind: Literal["technical", "tactical", "physical", "mental", "other"] = "other"
+    due: date | None = None
+    checkpoints: list[Checkpoint] = Field(default_factory=list, max_length=50)
 
 
 class PlanWeek(BaseModel):

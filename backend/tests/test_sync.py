@@ -264,3 +264,26 @@ async def test_advice_decisions_roundtrip_and_isolation(client):
     bad = decision | {"status": "maybe"}
     res = await push(client, h, up("advice_decisions", uuid.uuid4(), bad))
     assert res[0]["status"] == "rejected", res
+
+
+async def test_drill_source_player_changes_and_target_checkpoints(client):
+    """Источник и права упражнения, история изменений игрока, вид/срок/замеры цели — сохраняются."""
+    h, _ = await make_user(client)
+    t_id, p_id, d_id, plan_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    drill = {"title": "Квадрат", "category": "possession", "mistakes": ["Стоят на месте"],
+             "source_ref": "Своё", "license": "licensed", "video_url": "https://example.com/v"}
+    player = {"team_id": str(t_id), "first_name": "Иван",
+              "changes": [{"at": "2026-10-01T10:00:00Z", "text": "Номер: 5 → 7"}]}
+    plan = {"player_id": str(p_id), "period": "cycle8", "title": "Удары",
+            "targets": [{"name": "Удары в створ", "current": 6, "target": 8, "kind": "technical", "due": "2026-12-15",
+                         "checkpoints": [{"on": "2026-10-01", "value": 5, "note": "старт"}]}]}
+    res = await push(client, h, up("teams", t_id, team()), up("drills", d_id, drill), up("players", p_id, player),
+                     up("development_plans", plan_id, plan))
+    assert [r["status"] for r in res] == ["applied"] * 4, res
+    recs = {r["entity"]: r["data"] for r in (await client.get("/sync/pull?since=0", headers=h)).json()["records"]}
+    assert recs["drills"]["mistakes"] == ["Стоят на месте"] and recs["drills"]["license"] == "licensed"
+    assert recs["players"]["changes"][0]["text"] == "Номер: 5 → 7"
+    target = recs["development_plans"]["targets"][0]
+    assert target["kind"] == "technical" and target["due"] == "2026-12-15" and target["checkpoints"][0]["value"] == 5
+    bad = await push(client, h, up("drills", uuid.uuid4(), drill | {"video_url": "javascript:alert(1)"}))
+    assert bad[0]["status"] == "rejected", bad

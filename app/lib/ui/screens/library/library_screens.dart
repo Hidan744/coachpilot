@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -409,6 +410,7 @@ class DrillDetails extends ConsumerWidget {
         if (drill.fieldSize.isNotEmpty) Chip(label: Text(drill.fieldSize)),
         Chip(label: Text(switch (drill.intensity) { 'low' => 'Низкая интенсивность', 'high' => 'Высокая интенсивность', _ => 'Средняя интенсивность' })),
         if (drill.source == 'ai') const Chip(avatar: Icon(Icons.auto_awesome, size: 16), label: Text('Создано AI — проверьте')),
+        if (drill.license == 'unknown') const Chip(avatar: Icon(Icons.policy_outlined, size: 16), label: Text('Права не указаны — проверьте')),
       ]),
       if (drill.goal.isNotEmpty) ...[
         const SizedBox(height: 12),
@@ -444,8 +446,10 @@ class DrillDetails extends ConsumerWidget {
       section('Подсказки тренера', drill.coachingPoints),
       if (!compact) ...[
         section('Критерии успеха', drill.successCriteria),
+        section('Типичные ошибки', drill.mistakes.isEmpty ? const ['Не заполнено — добавьте в своей копии упражнения'] : drill.mistakes),
         section('Упростить', drill.easier),
         section('Усложнить', drill.harder),
+        _MaterialInfo(drill),
       ],
     ]);
   }
@@ -477,7 +481,14 @@ class DrillScreen extends ConsumerWidget {
             onSelected: (v) async {
               switch (v) {
                 case 'copy':
-                  final copy = Drill.fromJson(newId(), {...drill.toJson(), 'source': 'user', 'title': '${drill.title} (моё)'});
+                  final copy = Drill.fromJson(newId(), {
+                    ...drill.toJson(),
+                    'source': 'user',
+                    'title': '${drill.title} (моё)',
+                    // Происхождение сохраняется: на основе какого упражнения и с какими правами.
+                    'source_ref': 'На основе «${drill.title}»${drill.sourceRef.isEmpty ? '' : ' (${drill.sourceRef})'}',
+                    'license': drill.license,
+                  });
                   await repo.put(Entities.drills, copy);
                   if (context.mounted) context.pushReplacement('/library/edit/${copy.id}');
                 case 'edit':
@@ -616,6 +627,11 @@ class _DrillEditScreenState extends ConsumerState<DrillEditScreen> {
   late final _success = TextEditingController(text: _orig?.successCriteria.join('\n'));
   late final _easier = TextEditingController(text: _orig?.easier.join('\n'));
   late final _harder = TextEditingController(text: _orig?.harder.join('\n'));
+  late final _mistakes = TextEditingController(text: _orig?.mistakes.join('\n'));
+  late final _tags = TextEditingController(text: _orig?.tags.join(', '));
+  late final _sourceRef = TextEditingController(text: _orig?.sourceRef);
+  late final _video = TextEditingController(text: _orig?.videoUrl);
+  late String _license = _orig?.license ?? 'own';
   late String _category = _orig?.category ?? 'technique';
   late String _intensity = _orig?.intensity ?? 'medium';
   late RangeValues _ages = RangeValues((_orig?.ageMin ?? 6).toDouble(), (_orig?.ageMax ?? 99).clamp(6, 20).toDouble());
@@ -651,7 +667,11 @@ class _DrillEditScreenState extends ConsumerState<DrillEditScreen> {
       easier: _lines(_easier),
       harder: _lines(_harder),
       scheme: _scheme,
-      tags: _orig?.tags ?? const [],
+      tags: _tags.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+      mistakes: _lines(_mistakes),
+      sourceRef: _sourceRef.text.trim(),
+      license: _license,
+      videoUrl: _video.text.trim(),
     );
     await ref.read(repoProvider).put(Entities.drills, d);
     if (_orig == null) ref.read(analyticsProvider).track('drill_created', {'has_scheme': d.scheme != null});
@@ -750,6 +770,43 @@ class _DrillEditScreenState extends ConsumerState<DrillEditScreen> {
           _multiline(_success, 'Критерии успеха'),
           _multiline(_easier, 'Как упростить'),
           _multiline(_harder, 'Как усложнить'),
+          _multiline(_mistakes, 'Типичные ошибки', hint: 'Каждая с новой строки'),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: TextFormField(controller: _tags, decoration: const InputDecoration(labelText: 'Теги', hintText: 'Через запятую: прессинг, U12, разминка')),
+          ),
+          const SizedBox(height: 16),
+          Text('Источник и права', style: Theme.of(context).textTheme.titleSmall),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: TextFormField(
+              controller: _sourceRef,
+              decoration: const InputDecoration(labelText: 'Источник', hintText: 'Автор, книга, курс или «своё»'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: DropdownButtonFormField<String>(
+              initialValue: _license,
+              decoration: const InputDecoration(labelText: 'Права на материал'),
+              items: [
+                for (final e in Drill.licenses.entries)
+                  if (e.key != 'catalog' || _license == 'catalog') DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ],
+              onChanged: (v) => setState(() => _license = v ?? 'own'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: TextFormField(
+              controller: _video,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(labelText: 'Ссылка на видео (необязательно)', hintText: 'https://…'),
+              validator: (v) => v == null || v.trim().isEmpty || RegExp(r'^https?://\S+$').hasMatch(v.trim())
+                  ? null
+                  : 'Ссылка должна начинаться с http:// или https://',
+            ),
+          ),
         ]),
       ),
     );
@@ -868,4 +925,56 @@ List<Drill> similarDrills(Drill d, List<Drill> all, {int limit = 4}) {
         ..sort((a, b) => score(a).compareTo(score(b))))
       .take(limit)
       .toList();
+}
+
+
+/// Происхождение материала: источник, права, видео — честные статусы вместо пустых мест.
+class _MaterialInfo extends StatelessWidget {
+  const _MaterialInfo(this.d);
+
+  final Drill d;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    Widget row(IconData icon, String label, String value, {Widget? trailing}) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            Icon(icon, size: 18, color: AppColors.textMuted),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(TextSpan(children: [
+                TextSpan(text: '$label: ', style: const TextStyle(color: AppColors.textMuted)),
+                TextSpan(text: value),
+              ])),
+            ),
+            ?trailing,
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Материал', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        row(Icons.source_outlined, 'Источник', d.sourceRef.isNotEmpty ? d.sourceRef : (d.isSystem ? 'Каталог CoachPilot' : 'Не указан')),
+        row(Icons.copyright_outlined, 'Права', Drill.licenses[d.license] ?? d.license),
+        row(Icons.ondemand_video_outlined, 'Видео', d.videoUrl.isEmpty ? 'Не прикреплено' : d.videoUrl,
+            trailing: d.videoUrl.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Скопировать ссылку',
+                    icon: const Icon(Icons.copy, size: 18),
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: d.videoUrl));
+                      if (context.mounted) showInfo(context, 'Ссылка на видео скопирована');
+                    },
+                  )),
+        row(Icons.animation, 'Схема', () {
+          if (d.scheme == null || d.scheme!.items.isEmpty) return 'Нет';
+          final steps = {for (final i in d.scheme!.items) ?i.step}.length;
+          return steps > 1 ? 'С анимацией: $steps шагов' : 'Есть';
+        }()),
+        if (d.tags.isNotEmpty) row(Icons.sell_outlined, 'Теги', d.tags.join(', ')),
+      ]),
+    );
+  }
 }
