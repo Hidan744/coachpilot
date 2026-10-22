@@ -149,6 +149,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _password = TextEditingController();
   bool _consent = false;
   bool _busy = false;
+  String _role = 'coach';
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
@@ -158,7 +159,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
     setState(() => _busy = true);
     try {
-      await ref.read(authProvider.notifier).register(_name.text, _email.text, _password.text);
+      await ref.read(authProvider.notifier).register(_name.text, _email.text, _password.text, role: _role);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -167,7 +168,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => _AuthScaffold(title: 'Регистрация тренера', children: [
+  Widget build(BuildContext context) => _AuthScaffold(title: 'Регистрация', children: [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'coach', label: Text('Тренер')),
+            ButtonSegment(value: 'parent', label: Text('Родитель')),
+            ButtonSegment(value: 'player', label: Text('Игрок')),
+          ],
+          selected: {_role},
+          onSelectionChanged: (v) => setState(() => _role = v.first),
+        ),
+        if (_role != 'coach')
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('После регистрации введите код от тренера — откроется расписание и задания игрока.'),
+          ),
+        const SizedBox(height: 12),
         Form(
           key: _form,
           child: Column(children: [

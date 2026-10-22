@@ -75,6 +75,9 @@ class AuthState {
   final bool demo;
 
   String get name => profile?['name'] as String? ?? '';
+
+  /// Родитель или игрок: свой кабинет без командных разделов тренера.
+  bool get family => profile?['role'] == 'parent' || profile?['role'] == 'player';
 }
 
 class AuthController extends Notifier<AuthState> {
@@ -125,11 +128,13 @@ class AuthController extends Notifier<AuthState> {
   Future<void> login(String email, String password) =>
       _signIn(_api.postPublic('/auth/login', {'email': email.trim(), 'password': password}));
 
-  Future<void> register(String name, String email, String password) => _signIn(signup: true, _api.postPublic('/auth/register', {
+  Future<void> register(String name, String email, String password, {String role = 'coach'}) =>
+      _signIn(signup: true, _api.postPublic('/auth/register', {
         'name': name.trim(),
         'email': email.trim(),
         'password': password,
         'consent_personal_data': true,
+        'role': role,
       }));
 
   Future<void> _signIn(Future<dynamic> request, {bool signup = false}) async {

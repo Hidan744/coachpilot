@@ -136,6 +136,13 @@ class ProfileScreen extends ConsumerWidget {
           );
         }),
         ListTile(
+          leading: const Icon(Icons.apartment_outlined),
+          title: const Text('Футбольная школа'),
+          subtitle: const Text('Тренеры, сводка по командам, передача команды'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/profile/school'),
+        ),
+        ListTile(
           leading: const Icon(Icons.tune),
           title: const Text('Тариф и интеграции'),
           subtitle: const Text('Тариф, AI, Telegram-уведомления, журнал действий'),

@@ -500,3 +500,86 @@ class NotificationLog(Base):
     ref: Mapped[str] = mapped_column(String(80))
     channel: Mapped[str] = mapped_column(String(20), default="telegram")
     sent_at: Mapped[datetime] = _now_col()
+
+
+# ---------------------------------------------------------------- школа и семьи
+
+
+class Organization(Base):
+    """Футбольная школа или академия: объединяет тренеров; данные каждого тренера остаются его."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(150))
+    created_at: Mapped[datetime] = _now_col()
+
+
+class OrgMember(Base):
+    __tablename__ = "org_members"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20))  # owner | admin | head_coach | coach
+    joined_at: Mapped[datetime] = _now_col()
+
+
+class OrgInvite(Base):
+    __tablename__ = "org_invites"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(20))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PlayerInvite(Base):
+    """Одноразовый код, по которому родитель или игрок привязывает свой аккаунт к карточке игрока."""
+
+    __tablename__ = "player_invites"
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(10))  # parent | player
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FamilyLink(Base):
+    """Родитель или игрок, привязанный к карточке игрока. Видит только этого игрока и только открытое тренером."""
+
+    __tablename__ = "family_links"
+    __table_args__ = (UniqueConstraint("user_id", "player_id", name="uq_family_link"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), index=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(10))
+    created_at: Mapped[datetime] = _now_col()
+
+
+class Rsvp(Base):
+    """Подтверждение участия игрока в тренировке или матче."""
+
+    __tablename__ = "rsvps"
+
+    player_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("players.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10), primary_key=True)  # session | match
+    ref_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    status: Mapped[str] = mapped_column(String(10))  # yes | no | maybe
+    by_user: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    at: Mapped[datetime] = _now_col()
+
+
+class OwnershipMove(Base):
+    """Запись передана другому тренеру: прежний владелец при синхронизации получает её как удалённую."""
+
+    __tablename__ = "ownership_moves"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    old_owner: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    entity: Mapped[str] = mapped_column(String(40))
+    record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    seq: Mapped[int] = mapped_column(BigInteger)
+    at: Mapped[datetime] = _now_col()

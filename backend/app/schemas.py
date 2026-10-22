@@ -18,6 +18,8 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     name: str = Field(min_length=1, max_length=100)
     consent_personal_data: bool
+    # Тренер ведёт команды; родитель и игрок видят только привязанную карточку игрока.
+    role: Literal["coach", "parent", "player"] = "coach"
 
     @field_validator("consent_personal_data")
     @classmethod

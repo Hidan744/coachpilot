@@ -41,6 +41,7 @@ async def register(body: RegisterIn, request: Request, db: AsyncSession = Depend
         password_hash=hash_password(body.password),
         name=body.name.strip(),
         consent_version=get_settings().consent_version,
+        role=body.role,
     )
     db.add(user)
     await db.flush()

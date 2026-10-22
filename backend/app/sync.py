@@ -210,10 +210,22 @@ async def pull(db: AsyncSession, owner_id: uuid.UUID, since: int, limit: int) ->
             .limit(limit + 1)
         )
         collected.extend((r.server_seq, entity, r) for r in rows)
+    # Записи, переданные другому тренеру, — прежнему владельцу как удалённые.
+    moves = await db.scalars(
+        select(m.OwnershipMove)
+        .where(m.OwnershipMove.old_owner == owner_id, m.OwnershipMove.seq > since)
+        .order_by(m.OwnershipMove.seq)
+        .limit(limit + 1)
+    )
+    collected.extend((mv.seq, "__moved__", mv) for mv in moves)
     collected.sort(key=lambda t: t[0])
     has_more = len(collected) > limit
     page = collected[:limit]
-    records = [to_record(entity, row) for _, entity, row in page]
+    records = [
+        s.SyncRecord(entity=row.entity, id=row.record_id, server_seq=row.seq, updated_at=row.at, deleted=True, data={})
+        if entity == "__moved__" else to_record(entity, row)
+        for _, entity, row in page
+    ]
     cursor = page[-1][0] if page else since
     return s.PullOut(records=records, cursor=cursor, has_more=has_more)
 

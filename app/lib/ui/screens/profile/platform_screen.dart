@@ -26,11 +26,20 @@ const _auditLabels = {
   'plan_changed': 'Смена тарифа',
   'telegram_linked': 'Привязан Telegram',
   'telegram_unlinked': 'Telegram отвязан',
+  'family_joined': 'Подключён к карточке игрока',
+  'family_invite_created': 'Выдан код для родителя или игрока',
+  'family_link_revoked': 'Доступ родителя или игрока отозван',
+  'org_created': 'Создана футбольная школа',
+  'org_joined': 'Вход в футбольную школу',
+  'team_transferred': 'Команда передана другому тренеру',
 };
 
 /// Тариф, интеграции, уведомления и журнал действий. Всё — с сервера; без сети честно показывает, что недоступно.
 class PlatformScreen extends ConsumerWidget {
-  const PlatformScreen({super.key});
+  const PlatformScreen({super.key, this.familyMode = false});
+
+  /// Кабинет родителя или игрока: без тарифов и интеграций тренера.
+  final bool familyMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,7 +68,7 @@ class PlatformScreen extends ConsumerWidget {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Тариф и интеграции')),
+      appBar: AppBar(title: Text(familyMode ? 'Настройки' : 'Тариф и интеграции')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(_billingProvider);
@@ -68,6 +77,7 @@ class PlatformScreen extends ConsumerWidget {
           ref.invalidate(_auditProvider);
         },
         child: ListView(padding: const EdgeInsets.only(bottom: 40), children: [
+          if (!familyMode) ...[
           section('Ваш тариф'),
           async(ref.watch(_billingProvider), (b) {
             final plan = b['plan'] as Json;
@@ -140,6 +150,7 @@ class PlatformScreen extends ConsumerWidget {
               row('email', 'Почта', Icons.mail_outline),
             ]);
           }),
+          ],
           section('Уведомления в Telegram'),
           async(ref.watch(_telegramProvider), (tg) {
             if (tg['configured'] != true) {
@@ -210,6 +221,14 @@ class PlatformScreen extends ConsumerWidget {
                     subtitle: Text(DateFormat('d MMM yyyy, HH:mm', 'ru').format(DateTime.parse(a['at'] as String).toLocal())),
                   ),
               ])),
+          if (familyMode) ...[
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Выйти'),
+              onTap: () => ref.read(authProvider.notifier).logout(),
+            ),
+          ],
         ]),
       ),
     );

@@ -321,6 +321,17 @@ class _NextUp extends ConsumerWidget {
           ].join(' · '),
           style: const TextStyle(color: AppColors.textMuted),
         ),
+        // Подтверждения участия от родителей и игроков (если подключены их кабинеты).
+        if (team != null && (e.session != null || e.match != null))
+          Builder(builder: (context) {
+            final r = ref.watch(teamRsvpProvider(team.id)).value?['${isMatch ? 'match' : 'session'}:${isMatch ? e.match!.id : e.session!.id}'];
+            if (r == null) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Подтвердили: ${r['yes']} · не смогут: ${r['no']} · под вопросом: ${r['maybe']}',
+                  style: const TextStyle(color: AppColors.good, fontWeight: FontWeight.w600)),
+            );
+          }),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
@@ -631,3 +642,14 @@ class _Focus extends ConsumerWidget {
     );
   }
 }
+
+
+/// Подтверждения участия по команде (с сервера; в демо и без сети — пусто).
+final teamRsvpProvider = FutureProvider.autoDispose.family<Json, String>((ref, teamId) async {
+  if (ref.watch(authProvider).demo) return const {};
+  try {
+    return await ref.read(apiProvider).get('/teams/$teamId/rsvp') as Json;
+  } catch (_) {
+    return const {};
+  }
+});

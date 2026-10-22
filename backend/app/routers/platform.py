@@ -189,6 +189,22 @@ async def run_reminders(x_cron_secret: str = Header(default=""), db: AsyncSessio
                 m.Match.owner_id == link.user_id, m.Match.deleted_at.is_(None), m.Match.status == "scheduled",
                 m.Match.starts_at.between(now, soon))):
             items.append(("match", g.id, f"Матч с {g.opponent} — {_local(g.starts_at)}"))
+        # Родителю и игроку — события команды привязанного ребёнка.
+        children = await db.execute(
+            select(m.FamilyLink, m.Player).join(m.Player, m.Player.id == m.FamilyLink.player_id)
+            .where(m.FamilyLink.user_id == link.user_id, m.Player.deleted_at.is_(None))
+        )
+        for fl, p in children:
+            for s in await db.scalars(select(m.TrainingSession).where(
+                    m.TrainingSession.owner_id == fl.owner_id, m.TrainingSession.team_id == p.team_id,
+                    m.TrainingSession.deleted_at.is_(None), m.TrainingSession.status.in_(["planned", "draft"]),
+                    m.TrainingSession.scheduled_at.between(now, soon))):
+                items.append(("f_session", s.id, f"{p.first_name}: тренировка {_local(s.scheduled_at)}. "
+                                                  "Подтвердите участие в приложении."))
+            for g in await db.scalars(select(m.Match).where(
+                    m.Match.owner_id == fl.owner_id, m.Match.team_id == p.team_id, m.Match.deleted_at.is_(None),
+                    m.Match.status == "scheduled", m.Match.starts_at.between(now, soon))):
+                items.append(("f_match", g.id, f"{p.first_name}: матч с {g.opponent} {_local(g.starts_at)}"))
         for kind, ref, text in items:
             claimed = await db.execute(insert(m.NotificationLog).values(user_id=link.user_id, kind=kind, ref=str(ref))
                                        .on_conflict_do_nothing().returning(m.NotificationLog.id))

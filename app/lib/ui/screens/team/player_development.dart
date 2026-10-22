@@ -536,6 +536,7 @@ class ParentSection extends ConsumerWidget {
           ),
         ]),
       ),
+      if (!ref.watch(authProvider).demo) _FamilyAccess(player),
       if (notes.isEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -985,4 +986,91 @@ Future<PlanTarget?> editTarget(BuildContext context, WidgetRef ref, String playe
     due: due,
     checkpoints: checkpoints,
   );
+}
+
+
+final _familyProvider = FutureProvider.autoDispose.family<List<dynamic>, String>(
+  (ref, playerId) async => await ref.read(apiProvider).get('/players/$playerId/family') as List,
+);
+
+/// Аккаунты родителей и игрока: код для подключения и список, у кого есть доступ.
+class _FamilyAccess extends ConsumerWidget {
+  const _FamilyAccess(this.player);
+
+  final Player player;
+
+  Future<void> _code(BuildContext context, WidgetRef ref, String role) async {
+    try {
+      await ref.read(syncEngineProvider).sync().timeout(const Duration(seconds: 20), onTimeout: () {});
+      final r = await ref.read(apiProvider).post('/players/${player.id}/invite', {'role': role}) as Json;
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text(role == 'parent' ? 'Код для родителя' : 'Код для игрока'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SelectableText(r['code'] as String, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: 4)),
+            const SizedBox(height: 8),
+            const Text('Родитель или игрок регистрируется в CoachPilot, выбирает «Родитель» или «Игрок» и вводит код. '
+                'Код одноразовый, действует 7 дней.'),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: r['code'] as String));
+                if (d.mounted) Navigator.pop(d);
+              },
+              child: const Text('Скопировать'),
+            ),
+          ],
+        ),
+      );
+    } on ApiException catch (e) {
+      if (context.mounted) showInfo(context, e.isNetwork ? 'Нужен интернет' : e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fam = ref.watch(_familyProvider(player.id));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _code(context, ref, 'parent'),
+              icon: const Icon(Icons.family_restroom, size: 18),
+              label: const Text('Код родителю'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _code(context, ref, 'player'),
+              icon: const Icon(Icons.person_outline, size: 18),
+              label: const Text('Код игроку'),
+            ),
+          ),
+        ]),
+        for (final f in (fam.value ?? const []).cast<Json>())
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(f['role'] == 'parent' ? Icons.family_restroom : Icons.person_outline),
+            title: Text('${f['name']} — ${f['role'] == 'parent' ? 'родитель' : 'игрок'}'),
+            subtitle: const Text('Видит расписание и открытые для семьи материалы'),
+            trailing: IconButton(
+              tooltip: 'Отозвать доступ',
+              icon: const Icon(Icons.link_off),
+              onPressed: () async {
+                if (!await confirm(context, 'Отозвать доступ у ${f['name']}?', ok: 'Отозвать')) return;
+                await ref.read(apiProvider).delete('/players/${player.id}/family/${f['id']}');
+                ref.invalidate(_familyProvider(player.id));
+              },
+            ),
+          ),
+      ]),
+    );
+  }
 }

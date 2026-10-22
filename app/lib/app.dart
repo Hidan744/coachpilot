@@ -11,10 +11,12 @@ import 'ui/screens/calendar/import_matches_screen.dart';
 import 'ui/screens/calendar/live_match_screen.dart';
 import 'ui/screens/calendar/match_review_screen.dart';
 import 'ui/screens/calendar/match_stats_screen.dart';
+import 'ui/screens/family/family_screens.dart';
 import 'ui/screens/home/home_screen.dart';
 import 'ui/screens/library/library_screens.dart';
 import 'ui/screens/profile/platform_screen.dart';
 import 'ui/screens/profile/profile_screen.dart';
+import 'ui/screens/profile/school_screen.dart';
 import 'ui/screens/sessions/report_screens.dart';
 import 'ui/screens/sessions/run_screen.dart';
 import 'ui/screens/sessions/sessions_screens.dart';
@@ -47,6 +49,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           : Uri(path: '/splash', queryParameters: {'from': state.uri.toString()}).toString();
       if (!auth.ready) return loc == '/splash' ? null : toSplash();
       if (!auth.signedIn) return isAuthPage ? null : '/login';
+      // Родитель и игрок — только свой кабинет.
+      if (auth.family) {
+        if (loc.startsWith('/family')) return null;
+        return '/family';
+      }
       final onboarded = ref.read(onboardedProvider);
       if (!onboarded.hasValue) return loc == '/splash' ? null : toSplash();
       if (onboarded.value == false) return loc == '/onboarding' ? null : '/onboarding';
@@ -62,6 +69,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
       GoRoute(path: '/onboarding', builder: (_, _) => const OnboardingScreen()),
+      GoRoute(path: '/family', builder: (_, _) => const FamilyHomeScreen(), routes: [
+        GoRoute(path: 'settings', builder: (_, _) => const PlatformScreen(familyMode: true)),
+        GoRoute(path: ':playerId', builder: (_, s) => ChildScreen(playerId: s.pathParameters['playerId']!)),
+      ]),
       GoRoute(path: '/tactics', builder: (_, _) => const TacticsListScreen(), routes: [
         GoRoute(path: 'lineup', builder: (_, s) => LineupScreen(formation: s.uri.queryParameters['formation'])),
         GoRoute(path: ':id', builder: (_, s) => TacticBoardScreen(boardId: s.pathParameters['id']!)),
@@ -158,6 +169,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen(), routes: [
               GoRoute(path: 'platform', builder: (_, _) => const PlatformScreen()),
+              GoRoute(path: 'school', builder: (_, _) => const SchoolScreen()),
             ]),
           ]),
         ],
